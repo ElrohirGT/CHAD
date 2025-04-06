@@ -26,6 +26,7 @@ experimental-features = nix-command flakes
 Now, from within the repository root simply type
 
 ```bash
+# REMEMBER! From within the repository root!
 nix develop
 ```
 
