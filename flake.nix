@@ -22,7 +22,7 @@
       pkgs = nixpkgsFor.${system};
     in {
       default = pkgs.mkShell {
-        packages = [pkgs.clang pkgs.clang-tools];
+        packages = [pkgs.clang pkgs.clang-tools pkgs.go-task];
       };
     });
   };
