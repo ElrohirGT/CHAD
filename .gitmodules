@@ -1,0 +1,3 @@
+[submodule "deps/nob.h"]
+	path = deps/nob.h
+	url = https://github.com/tsoding/nob.h
