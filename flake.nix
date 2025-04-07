@@ -22,7 +22,18 @@
       pkgs = nixpkgsFor.${system};
     in {
       default = pkgs.mkShell {
-        packages = [pkgs.clang pkgs.clang-tools pkgs.go-task];
+        packages = [
+          pkgs.clang
+          pkgs.clang-tools
+          pkgs.go-task
+
+          # libwebsocket deps
+          pkgs.cmake
+          pkgs.gnumake
+          pkgs.openssl
+          pkgs.gnused
+          # pkgs.libwebsockets
+        ];
       };
     });
   };
