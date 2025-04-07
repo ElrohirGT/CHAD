@@ -69,12 +69,13 @@ int main(int argc, char **argv) {
   }
 
   String_Builder sb = {0};
-  const char *compiler = "clang  -Wall -Wextra ";
+  const char *compiler = "clang ";
   if (compile_wit_verbosity) {
-    compiler = "clang -v -Wall -Wextra ";
+    compiler = "clang -v ";
   }
 
   sb_append_cstr(&sb, compiler);
+  sb_append_cstr(&sb, "-Wall -Wextra ");
   sb_append_cstr(&sb, "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER "include "
                       "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
                       "include/libwebsockets "
@@ -85,8 +86,8 @@ int main(int argc, char **argv) {
                       "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
                       "include/libwebsockets/abstract/transports "
                       "-L$(realpath \"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER "lib) "
-                      "-lwebsockets "
-                      "-o build/main " SRC_FOLDER "main.c");
+                      "-l:libwebsockets.so "
+                      "-o build/main -flto " SRC_FOLDER "main.c");
 
   nob_cmd_append(&cmd, "bash", "-c", sb.items);
   if (!nob_cmd_run_sync_and_reset(&cmd))

@@ -31,7 +31,9 @@
           pkgs.cmake
           pkgs.gnumake
           pkgs.openssl
-          pkgs.gnused
+          # pkgs.glibc
+          # pkgs.gnused
+          # pkgs.triton-llvm
           # pkgs.libwebsockets
         ];
       };
