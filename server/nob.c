@@ -30,13 +30,13 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Usage: nob [-compiler options]\n"
                     "Compiler options:\n"
                     "  -v: Compiler with verbosity enabled.\n"
-                    "  -r: Rebuild dependencies.\n"
+                    "  -d: Rebuild dependencies.\n"
                     "  -h: Display help menu.\n");
     return 1;
   }
 
   bool should_rebuild_deps = false;
-  if (args_contains(argc, argv, "-r", 2)) {
+  if (args_contains(argc, argv, "-d", 2)) {
     nob_log(NOB_WARNING, "Will rebuild dependencies!");
     should_rebuild_deps = true;
   }
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
   }
 
   sb_append_cstr(&sb, compiler);
-  sb_append_cstr(&sb, "-Wall -Wextra ");
+  sb_append_cstr(&sb, "-Wall -Werror -fuse-ld=lld ");
   sb_append_cstr(&sb, "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER "include "
                       "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
                       "include/libwebsockets "
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
                       "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
                       "include/libwebsockets/abstract/transports "
                       "-L$(realpath \"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER "lib) "
-                      "-l:libwebsockets.so "
+                      "-lwebsockets "
                       "-o build/main -flto " SRC_FOLDER "main.c");
 
   nob_cmd_append(&cmd, "bash", "-c", sb.items);

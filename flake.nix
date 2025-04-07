@@ -25,6 +25,7 @@
         packages = [
           pkgs.clang
           pkgs.clang-tools
+          pkgs.lld
           pkgs.go-task
 
           # libwebsocket deps
