@@ -4,3 +4,6 @@
 [submodule "deps/libwebsockets"]
 	path = deps/libwebsockets
 	url = https://libwebsockets.org/repo/libwebsockets
+[submodule "deps/facil.io"]
+	path = deps/facil.io
+	url = https://github.com/boazsegev/facil.io
