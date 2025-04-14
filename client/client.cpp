@@ -52,12 +52,15 @@ class ActiveButton : public QPushButton {
 };
 
 int main(int argc, char *argv[]) {
+
     bool isBusy = false;
     char name[] = "Jose"; 
     QApplication app(argc, argv);
 
     // Crear la ventana principal
     MainWindow mainWindow;
+
+    QListWidget *chatUsers = new QListWidget(&mainWindow);
 
     // Create button for handling busy status
     ActiveButton *activeButton = new ActiveButton(isBusy);
@@ -97,6 +100,7 @@ int main(int argc, char *argv[]) {
     ipLabel->setContentsMargins(10,0,0,0);
     QLabel *nameLabel = new QLabel(name);
     nameLabel->setContentsMargins(10,0,0,0);
+    nameLabel->setStyleSheet("font-size: 25px;");
 
     QLabel *chatListLabel = new QLabel("Lista de Usuarios");
     chatListLabel->setMinimumWidth(300);
@@ -108,17 +112,17 @@ int main(int argc, char *argv[]) {
     statusButton->setContentsMargins(0, 0, 0, 100);
 
     QPalette topPalette = nameLabel->palette();
-    topPalette.setColor(QPalette::Window, QColor(200, 220, 255)); // Color azul claro
+    topPalette.setColor(QPalette::Window, QColor(31, 181, 25)); // Color azul claro
     topWidget->setAutoFillBackground(true);
     topWidget->setPalette(topPalette);
 
     QPalette chatListPalette = chatListLabel->palette();
-    chatListPalette.setColor(QPalette::Window, QColor(255, 230, 200)); // Color naranja claro
+    chatListPalette.setColor(QPalette::Window, QColor(189, 189, 189)); // Color naranja claro
     chatListWidget->setAutoFillBackground(true);
     chatListWidget->setPalette(chatListPalette);
 
     QPalette chatAreaPalette = chatAreaLabel->palette();
-    chatAreaPalette.setColor(QPalette::Window, QColor(220, 255, 220)); // Color verde claro
+    chatAreaPalette.setColor(QPalette::Window, QColor(189, 189, 189)); // Color verde claro
     chatWidget->setAutoFillBackground(true);
     chatWidget->setPalette(chatAreaPalette);
 
