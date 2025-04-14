@@ -9,27 +9,58 @@
 #include <QString>
 #include <QCloseEvent>
 #include <QPushButton>
+#include <QDebug>
 #include <cstdio>
 
+// class for creating the window project
 class MainWindow : public QMainWindow {
     public:
         MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
             setWindowTitle("CHAD GUI");
         }
     protected:
-        // IN this function you can modify what happens when closing the chat
+        // In this function you can modify what happens when closing the chat
         void closeEvent(QCloseEvent *event) override {
             printf("Hello World\n");
             event->accept();
         }
 };
 
+// Class for the status button
+class ActiveButton : public QPushButton {
+    public: 
+        ActiveButton(bool &RefStatus, QWidget *parent = nullptr) : QPushButton(parent), status(false), externalStatus(RefStatus) {
+            setMaximumWidth(50);
+            setContentsMargins(0,0,0,100);
+
+            connect(this, &QPushButton::clicked, this, &ActiveButton::clickSlot);
+        }
+
+    public slots:
+        // Change to opposite status set status true for Busy
+        void clickSlot(){
+            status = !status; // change class status
+            qDebug() << "Status:" << status; // Debug print
+            externalStatus = status; // change the status from outside the class
+            qDebug() << "main status:" << externalStatus; // Debug print
+        }
+    
+    // Class attributes
+    private:
+        bool status;
+        bool &externalStatus;
+};
+
 int main(int argc, char *argv[]) {
+    bool isBusy = false;
     char name[] = "Jose"; 
     QApplication app(argc, argv);
 
     // Crear la ventana principal
     MainWindow mainWindow;
+
+    // Create button for handling busy status
+    ActiveButton *activeButton = new ActiveButton(isBusy);
 
     // Generates Widgets
     // QWidgets are the base component for the QT aplicattion
@@ -96,7 +127,7 @@ int main(int argc, char *argv[]) {
     nameWidget->setLayout(nameLayout);
 
     topLayout->addWidget(nameWidget);
-    topLayout->addWidget(statusButton);
+    topLayout->addWidget(activeButton);
     topWidget->setLayout(topLayout);
     
     chatListLayout->addWidget(chatListLabel);
