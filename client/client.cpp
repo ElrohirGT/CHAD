@@ -37,6 +37,8 @@ int main(int argc, char *argv[]) {
     QWidget *mainWidget = new QWidget();
     // Contains the components of the top bar of chat
     QWidget *topWidget = new QWidget();
+    // Contains name and ip address
+    QWidget *nameWidget = new QWidget();
     // Contains all widgets remaining 
     QWidget *centralWidget = new QWidget();
     // Widget that shows the list of users to chat with
@@ -57,10 +59,13 @@ int main(int argc, char *argv[]) {
     chatListLayout->setContentsMargins(0, 0, 0, 0);
     QVBoxLayout *chatAreaLayout = new QVBoxLayout();
     chatAreaLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout *nameLayout = new QVBoxLayout();
+    nameLayout->setContentsMargins(0, 0, 0, 0);
 
-    QLabel *topLabel = new QLabel(name);
-    topLabel->setContentsMargins(10,0,0,0);
-    topLabel->setMinimumHeight(30);
+    QLabel *ipLabel = new QLabel("127.0.0.1");
+    ipLabel->setContentsMargins(10,0,0,0);
+    QLabel *nameLabel = new QLabel(name);
+    nameLabel->setContentsMargins(10,0,0,0);
 
     QLabel *chatListLabel = new QLabel("Lista de Usuarios");
     chatListLabel->setMinimumWidth(300);
@@ -71,7 +76,7 @@ int main(int argc, char *argv[]) {
     statusButton->setMaximumWidth(50);
     statusButton->setContentsMargins(0, 0, 0, 100);
 
-    QPalette topPalette = topLabel->palette();
+    QPalette topPalette = nameLabel->palette();
     topPalette.setColor(QPalette::Window, QColor(200, 220, 255)); // Color azul claro
     topWidget->setAutoFillBackground(true);
     topWidget->setPalette(topPalette);
@@ -86,7 +91,11 @@ int main(int argc, char *argv[]) {
     chatWidget->setAutoFillBackground(true);
     chatWidget->setPalette(chatAreaPalette);
 
-    topLayout->addWidget(topLabel);
+    nameLayout->addWidget(nameLabel);
+    nameLayout->addWidget(ipLabel);
+    nameWidget->setLayout(nameLayout);
+
+    topLayout->addWidget(nameWidget);
     topLayout->addWidget(statusButton);
     topWidget->setLayout(topLayout);
     
