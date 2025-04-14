@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QString>
 #include <QCloseEvent>
+#include <QPushButton>
 #include <cstdio>
 
 class MainWindow : public QMainWindow {
@@ -24,6 +25,7 @@ class MainWindow : public QMainWindow {
 };
 
 int main(int argc, char *argv[]) {
+    char name[] = "Jose"; 
     QApplication app(argc, argv);
 
     // Crear la ventana principal
@@ -50,16 +52,24 @@ int main(int argc, char *argv[]) {
     QHBoxLayout *centralLayout = new QHBoxLayout();
     centralLayout->setContentsMargins(0, 0, 0, 0);
     QHBoxLayout *topLayout = new QHBoxLayout();
+    topLayout->setContentsMargins(0, 0, 0, 0);
     QVBoxLayout *chatListLayout = new QVBoxLayout();
     chatListLayout->setContentsMargins(0, 0, 0, 0);
     QVBoxLayout *chatAreaLayout = new QVBoxLayout();
+    chatAreaLayout->setContentsMargins(0, 0, 0, 0);
 
-    QLabel *topLabel = new QLabel("Barra Superior");
+    QLabel *topLabel = new QLabel(name);
+    topLabel->setContentsMargins(10,0,0,0);
     topLabel->setMinimumHeight(30);
 
     QLabel *chatListLabel = new QLabel("Lista de Usuarios");
-    chatListLabel->setMinimumWidth(100);
+    chatListLabel->setMinimumWidth(300);
     QLabel *chatAreaLabel = new QLabel("Área de Chat");
+    
+    //Button for changing status to Busy or Active
+    QPushButton *statusButton = new QPushButton();
+    statusButton->setMaximumWidth(50);
+    statusButton->setContentsMargins(0, 0, 0, 100);
 
     QPalette topPalette = topLabel->palette();
     topPalette.setColor(QPalette::Window, QColor(200, 220, 255)); // Color azul claro
@@ -77,6 +87,7 @@ int main(int argc, char *argv[]) {
     chatWidget->setPalette(chatAreaPalette);
 
     topLayout->addWidget(topLabel);
+    topLayout->addWidget(statusButton);
     topWidget->setLayout(topLayout);
     
     chatListLayout->addWidget(chatListLabel);
