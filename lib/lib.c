@@ -1,3 +1,4 @@
+#include "../server/deps/mongoose/mongoose.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -177,7 +178,8 @@ typedef struct {
   size_t length;
 } UWU_String;
 
-UWU_Bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
+UWU_Bool UWU_String_startsWith(const UWU_String *const str,
+                               const UWU_String *const prefix) {
   if (str->length < prefix->length) {
     return FALSE;
   }
@@ -189,7 +191,8 @@ UWU_Bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
   return FALSE;
 }
 
-UWU_Bool UWU_String_endsWith(UWU_String *str, UWU_String *postfix) {
+UWU_Bool UWU_String_endsWith(const UWU_String *const str,
+                             const UWU_String *const postfix) {
   if (str->length < postfix->length) {
     return FALSE;
   }
@@ -204,7 +207,8 @@ UWU_Bool UWU_String_endsWith(UWU_String *str, UWU_String *postfix) {
 
 // Returns `TRUE` if `first` goes first alphabetically speaking.
 // False otherwise.
-UWU_Bool UWU_String_firstGoesFirst(UWU_String *first, UWU_String *other) {
+UWU_Bool UWU_String_firstGoesFirst(const UWU_String *const first,
+                                   const UWU_String *const other) {
   size_t min_length = first->length;
   if (other->length < min_length) {
     min_length = other->length;
@@ -230,7 +234,8 @@ UWU_Bool UWU_String_firstGoesFirst(UWU_String *first, UWU_String *other) {
 // Attempts to combine two strings.
 //
 // The caller owns the resulting string.
-UWU_String UWU_String_combineWithOther(UWU_String *first, UWU_String *second) {
+UWU_String UWU_String_combineWithOther(const UWU_String *const first,
+                                       const UWU_String *const second) {
   UWU_String str = {.length = first->length + second->length};
   str.data = malloc(str.length);
 
@@ -249,7 +254,8 @@ UWU_String UWU_String_combineWithOther(UWU_String *first, UWU_String *second) {
 // Attempts to combine two strings.
 //
 // The caller owns the resulting string.
-UWU_String UWU_String_tryCombineWithOther(UWU_String *first, UWU_String *second,
+UWU_String UWU_String_tryCombineWithOther(const UWU_String *const first,
+                                          const UWU_String *const second,
                                           UWU_Err err) {
   UWU_String str = {.length = first->length + second->length};
   str.data = malloc(str.length);
@@ -268,10 +274,10 @@ UWU_String UWU_String_tryCombineWithOther(UWU_String *first, UWU_String *second,
 
 // Frees the specified `UWU_String` that was originally allocated by a `malloc`
 // call. This function ONLY FREES THE `data` field inside `UWU_String`.
-void UWU_String_freeWithMalloc(UWU_String *str) { free(str->data); }
+void UWU_String_freeWithMalloc(const UWU_String *const str) { free(str->data); }
 
 // Attempts to converts from a `UWU_String` to a null terminated string.
-char *UWU_String_tryToCStr(UWU_String *str, UWU_Err err) {
+char *UWU_String_tryToCStr(const UWU_String *const str, UWU_Err err) {
   char *c_str = malloc(str->length + 1);
 
   if (c_str == NULL) {
@@ -290,7 +296,7 @@ char *UWU_String_tryToCStr(UWU_String *str, UWU_Err err) {
 // Converts from `UWU_String` into a null-terminated string (C string).
 //
 // If malloc fails then panics.
-char *UWU_String_toCStr(UWU_String *str) {
+char *UWU_String_toCStr(const UWU_String *const str) {
   char *c_str = malloc(str->length + 1);
 
   if (c_str == NULL) {
@@ -309,7 +315,7 @@ char *UWU_String_toCStr(UWU_String *str) {
 
 // Tries to obtain a char at the specified index.
 // Panics if the index is out of bounds!
-char UWU_String_charAt(UWU_String *str, size_t idx) {
+char UWU_String_charAt(const UWU_String *const str, size_t idx) {
   if (idx < 0 || idx >= str->length) {
     UWU_PANIC("Can't access character out of bounds of string!");
     return 0;
@@ -319,7 +325,7 @@ char UWU_String_charAt(UWU_String *str, size_t idx) {
 }
 
 // Copies `src` into a new `UWU_String`.
-UWU_String UWU_String_copy(UWU_String *src, UWU_Err err) {
+UWU_String UWU_String_copy(const UWU_String *const src, UWU_Err err) {
   UWU_String str = {};
   str.data = malloc(src->length);
 
@@ -334,7 +340,7 @@ UWU_String UWU_String_copy(UWU_String *src, UWU_Err err) {
   return str;
 }
 
-uint8_t UWU_String_getChar(UWU_String *str, size_t idx) {
+uint8_t UWU_String_getChar(const UWU_String *const str, size_t idx) {
   if (idx >= 0 && idx < str->length) {
     return str->data[idx];
   }
@@ -348,7 +354,7 @@ uint8_t UWU_String_getChar(UWU_String *str, size_t idx) {
 }
 
 // Checks if the given `a` string is equal to the other `b` string.
-UWU_Bool UWU_String_equal(UWU_String *a, UWU_String *b) {
+UWU_Bool UWU_String_equal(const UWU_String *a, const UWU_String *b) {
   if (a->length != b->length) {
     return FALSE;
   }
@@ -364,6 +370,7 @@ typedef struct {
   UWU_String username;
   UWU_ConnStatus status;
   time_t last_action;
+  struct mg_connection *conn;
 } UWU_User;
 
 UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
@@ -378,6 +385,7 @@ UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
   copy.username = user_name_copy;
   copy.status = src->status;
   copy.last_action = src->last_action;
+  copy.conn = src->conn;
 
   return copy;
 }

@@ -6,6 +6,8 @@
 #include "../../lib/lib.c"
 #include "../deps/hashmap/hashmap.h"
 #include "../deps/mongoose/mongoose.c"
+#include <signal.h>
+#include <stdio.h>
 
 /* *****************************************************************************
 Constants
@@ -19,15 +21,19 @@ static const char *s_key_path = "key.pem";
 // Global group chat
 static const UWU_String GROUP_CHAT_CHANNEL = {.data = "~", .length = 1};
 
+// Separator used for chat connections
+static const UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
+
 // The max quantity of messages a chat history can hold...
 // This value CAN'T be higher than 255 since that's the maximum number of
 // messages that can be sent over the wire.
 static const size_t MAX_MESSAGES_PER_CHAT = 100;
 
 // The amount of seconds that need to pass in order for a user to become IDLE.
-static const time_t IDLE_SECONDS_LIMIT = 15;
+// static const time_t IDLE_SECONDS_LIMIT = 15;
 // The amount of seconds that we wait before checking for IDLE users again.
-static const struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
+// static const struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec =
+// 0};
 
 /* *****************************************************************************
 Server State
@@ -57,6 +63,8 @@ static UWU_ServerState *UWU_STATE = NULL;
 
 UWU_ServerState initialize_server_state(UWU_Err err) {
   UWU_ServerState state = {};
+
+  mg_mgr_init(&state.manager);
 
   state.active_usernames = UWU_UserList_init(err);
   if (err != NO_ERROR) {
@@ -99,13 +107,19 @@ UWU_ServerState initialize_server_state(UWU_Err err) {
 void deinitialize_server_state(UWU_ServerState *state) {
   state->is_shutting_off = TRUE;
 
-  fprintf(stderr, "Cleaning User List...\n");
+  fprintf(stderr, "Info: Deinitializing mongoose manager...\n");
+  mg_mgr_free(&state->manager);
+
+  fprintf(stderr, "Info: Cleaning User List...\n");
   UWU_UserList_deinit(&state->active_usernames);
-  fprintf(stderr, "Cleaning group Chat history...\n");
+
+  fprintf(stderr, "Info: Cleaning group Chat history...\n");
   UWU_ChatHistory_deinit(&state->group_chat);
-  fprintf(stderr, "Cleaning DM Chat histories...\n");
+
+  fprintf(stderr, "Info: Cleaning DM Chat histories...\n");
   hashmap_destroy(&state->chats);
-  fprintf(stderr, "Cleaning request arena...\n");
+
+  fprintf(stderr, "Info: Cleaning request arena...\n");
   UWU_Arena_deinit(state->req_arena);
 }
 
@@ -115,7 +129,7 @@ Utilities functions
 void update_last_action(UWU_User *info) {
   info->last_action = time(NULL);
   if ((time_t)-1 == info->last_action) {
-    UWU_PANIC("Fatal: Failed to obtain curren time!");
+    UWU_PANIC("Fatal: Failed to obtain current time!");
     return;
   }
 }
@@ -158,52 +172,74 @@ UWU_String create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
 /* *****************************************************************************
 IDLE Detector
 ***************************************************************************** */
-static void *idle_detector(void *p) {
-  UWU_Err err = NO_ERROR;
-  UWU_Arena arena = UWU_Arena_init(2 + 1 + 255, err);
-  if (err != NO_ERROR) {
-    UWU_PANIC("Fatal: Failed to initialize idle_detector arena!");
-    return NULL;
+// static void *idle_detector(void *p) {
+//   UWU_Err err = NO_ERROR;
+//   UWU_Arena arena = UWU_Arena_init(2 + 1 + 255, err);
+//   if (err != NO_ERROR) {
+//     UWU_PANIC("Fatal: Failed to initialize idle_detector arena!");
+//     return NULL;
+//   }
+//
+//   // UWU_UserList *active_usernames = (UWU_UserList *)p;
+//   // fprintf(stderr, "Info: active_usernames received in: %p\n",
+//   //         (void *)&UWU_STATE->active_usernames);
+//   UWU_UserList usernames = UWU_STATE->active_usernames;
+//   while (!UWU_STATE->is_shutting_off) {
+//     fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
+//             usernames.length);
+//     time_t now = time(NULL);
+//
+//     if ((clock_t)-1 == now) {
+//       UWU_PANIC("Fatal: Failed to get current clock time!");
+//       UWU_Arena_deinit(arena);
+//       return NULL;
+//     }
+//
+//     for (struct UWU_UserListNode *current = usernames.start; current != NULL;
+//          current = current->next) {
+//       if (current->is_sentinel) {
+//         continue;
+//       }
+//
+//       time_t seconds_diff = difftime(now, current->data.last_action);
+//       UWU_ConnStatus status = current->data.status;
+//       if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
+//         UWU_Arena_reset(&arena);
+//         fprintf(stderr, "Info: Updating %.*s as INACTIVE!\n",
+//                 current->data.username.length, current->data.username.data);
+//         current->data.status = INACTIVE;
+//         UWU_String msg = create_changed_status_message(&arena,
+//         &current->data); broadcast_msg(&UWU_STATE->manager, &msg);
+//       }
+//     }
+//
+//     nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
+//   }
+//
+//   UWU_Arena_deinit(arena);
+//   return NULL;
+// }
+
+UWU_String changed_status_builder(char *buff, UWU_User *info) {
+  UWU_String def = {};
+  size_t msg_length = 0;
+
+  buff[msg_length] = CHANGED_STATUS;
+  msg_length++;
+
+  buff[msg_length] = info->username.length;
+  msg_length++;
+
+  for (int i = 0; i < info->username.length; i++) {
+    buff[msg_length] = UWU_String_getChar(&info->username, i);
+    msg_length++;
   }
 
-  // UWU_UserList *active_usernames = (UWU_UserList *)p;
-  // fprintf(stderr, "Info: active_usernames received in: %p\n",
-  //         (void *)&UWU_STATE->active_usernames);
-  UWU_UserList usernames = UWU_STATE->active_usernames;
-  while (!UWU_STATE->is_shutting_off) {
-    fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
-            usernames.length);
-    time_t now = time(NULL);
+  buff[msg_length] = info->status;
 
-    if ((clock_t)-1 == now) {
-      UWU_PANIC("Fatal: Failed to get current clock time!");
-      UWU_Arena_deinit(arena);
-      return NULL;
-    }
-
-    for (struct UWU_UserListNode *current = usernames.start; current != NULL;
-         current = current->next) {
-      if (current->is_sentinel) {
-        continue;
-      }
-
-      time_t seconds_diff = difftime(now, current->data.last_action);
-      UWU_ConnStatus status = current->data.status;
-      if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
-        UWU_Arena_reset(&arena);
-        fprintf(stderr, "Info: Updating %.*s as INACTIVE!\n",
-                current->data.username.length, current->data.username.data);
-        current->data.status = INACTIVE;
-        UWU_String msg = create_changed_status_message(&arena, &current->data);
-        broadcast_msg(&UWU_STATE->manager, &msg);
-      }
-    }
-
-    nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
-  }
-
-  UWU_Arena_deinit(arena);
-  return NULL;
+  def.data = buff;
+  def.length = msg_length;
+  return def;
 }
 
 // This RESTful server implements the following endpoints:
@@ -221,18 +257,126 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     mg_tls_init(c, &opts);
   } else if (ev == MG_EV_HTTP_MSG) {
     struct mg_http_message *hm = (struct mg_http_message *)ev_data;
-    if (mg_match(hm->uri, mg_str("/websocket"), NULL)) {
-      // Upgrade to websocket. From now on, a connection is a full-duplex
-      // Websocket connection, which will receive MG_EV_WS_MSG events.
-      mg_ws_upgrade(c, hm, NULL);
-    } else if (mg_match(hm->uri, mg_str("/rest"), NULL)) {
-      // Serve REST response
-      mg_http_reply(c, 200, "", "{\"result\": %d}\n", 123);
-    } else {
-      // Serve static files
-      struct mg_http_serve_opts opts = {.root_dir = s_web_root};
-      mg_http_serve_dir(c, ev_data, &opts);
+    // We treat all requests as attempting to connect to the server...
+    if (hm->query.len < 6) {
+      fprintf(stderr,
+              "Error: Query must contain at least a `name` parameter!\n");
+      mg_http_reply(c, 400, "", "INVALID USERNAME QUERY FORMAT");
+      return;
     }
+
+    UWU_String EXPECTED_QUERY_START = {
+        .data = "?name=",
+        .length = 6,
+    };
+    UWU_String query_start = {
+        .data = hm->query.buf,
+        .length = 6,
+    };
+
+    if (!UWU_String_equal(&EXPECTED_QUERY_START, &query_start)) {
+      fprintf(stderr, "Error: Invalid query format!\n");
+      mg_http_reply(c, 400, "", "INVALID USERNAME QUERY FORMAT");
+      return;
+    }
+    if (hm->query.len - 6 <= 0) {
+      fprintf(stderr, "Error: Username is too short!\n");
+      mg_http_reply(c, 400, "", "USERNAME CANT BE EMPTY");
+      return;
+    }
+    if (hm->query.len - 6 > 255) {
+      fprintf(stderr, "Error: Username is too large!\n");
+      mg_http_reply(c, 400, "", "USERNAME TOO LARGE");
+      return;
+    }
+
+    UWU_String source_username = {
+        .data = &hm->query.buf[6],
+        .length = hm->query.len - 6,
+    };
+
+    if (UWU_String_equal(&GROUP_CHAT_CHANNEL, &source_username)) {
+      fprintf(stderr,
+              "Error: Can't connect with the same name as the group chat!\n");
+      mg_http_reply(c, 400, "", "INVALID USERNAME");
+      return;
+    }
+
+    {
+      UWU_User *user = UWU_UserList_findByName(&UWU_STATE->active_usernames,
+                                               &source_username);
+      if (user != NULL) {
+        fprintf(stderr, "Error: Can't connect to an already used username!\n");
+        mg_http_reply(c, 400, "", "INVALID USERNAME");
+        return;
+      }
+    }
+
+    UWU_User user = {.username = source_username, .status = ACTIVE};
+    update_last_action(&user);
+
+    UWU_Err err = NO_ERROR;
+    struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
+    UWU_UserList_insertEnd(&UWU_STATE->active_usernames, &node, err);
+    if (err != NO_ERROR) {
+      UWU_PANIC("Fatal: Failed to add username `%.*s` to the UserCollection!",
+                source_username.length, source_username.data);
+      return;
+    }
+    fprintf(stderr, "Info: Currently %zu active users!\n",
+            UWU_STATE->active_usernames.length);
+
+    for (struct UWU_UserListNode *current = UWU_STATE->active_usernames.start;
+         current != NULL; current = current->next) {
+
+      if (current->is_sentinel) {
+        continue;
+      }
+
+      UWU_String current_username = current->data.username;
+      UWU_String *first = &current_username;
+      UWU_String *other = &source_username;
+
+      if (!UWU_String_firstGoesFirst(first, other)) {
+        first = &source_username;
+        other = &current_username;
+      }
+
+      UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+      UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+      UWU_String_freeWithMalloc(&tmp);
+
+      UWU_ChatHistory *ht = malloc(sizeof(UWU_ChatHistory));
+      *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, err);
+      if (0 !=
+          hashmap_put(&UWU_STATE->chats, combined.data, combined.length, ht)) {
+        UWU_PANIC("Fatal: Error creating shared chat for `%.*s`!",
+                  combined.length, combined.data);
+        return;
+      }
+    }
+
+    // Tell all other users that a new connection has arrived...
+    {
+      size_t max_length = 3 + 255;
+      char buff[max_length];
+      UWU_String msg = changed_status_builder(buff, &user);
+
+      for (struct UWU_UserListNode *current = UWU_STATE->active_usernames.start;
+           current != NULL; current = current->next) {
+
+        if (current->is_sentinel) {
+          continue;
+        }
+
+        mg_ws_send(current->data.conn, msg.data, msg.length,
+                   WEBSOCKET_OP_BINARY);
+      }
+    }
+
+    mg_ws_upgrade(c, hm, NULL);
+    // Serve REST response
+    // mg_http_reply(c, 200, "", "{\"result\": %d}\n", 123);
   } else if (ev == MG_EV_WS_MSG) {
     // Got websocket frame. Received data is wm->data. Echo it back!
     struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
@@ -240,12 +384,20 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
   }
 }
 
+void shutdown_server(int signal) {
+  fprintf(stderr, "Info: Shutting down server...\n");
+  UWU_STATE->is_shutting_off = TRUE;
+}
+
 int main(int argc, char *argv[]) {
-  struct mg_mgr mgr; // Event manager
-  int i;
+
+  struct sigaction action = {};
+  action.sa_handler = shutdown_server;
+  sigaction(SIGINT, &action, NULL);
+  sigaction(SIGTERM, &action, NULL);
 
   // Parse command-line flags
-  for (i = 1; i < argc; i++) {
+  for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-url") == 0 && argv[i + 1] != NULL) {
       s_listen_on = argv[++i];
     } else if (strcmp(argv[i], "-ca") == 0 && argv[i + 1] != NULL) {
@@ -265,11 +417,19 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  mg_mgr_init(&mgr); // Initialise event manager
+  UWU_Err err = NO_ERROR;
+  UWU_ServerState state = initialize_server_state(err);
+  if (err != NO_ERROR) {
+    fprintf(stderr, "Fatal: Failed to initialize server state! Error: %zu\n",
+            *err);
+    return 1;
+  }
+  UWU_STATE = &state;
+
   printf("Starting WS listener on %s/websocket\n", s_listen_on);
-  mg_http_listen(&mgr, s_listen_on, fn, NULL); // Create HTTP listener
-  for (;;)
-    mg_mgr_poll(&mgr, 1000); // Infinite event loop
-  mg_mgr_free(&mgr);
+  mg_http_listen(&state.manager, s_listen_on, fn, NULL); // Create HTTP listener
+  for (; !UWU_STATE->is_shutting_off;)
+    mg_mgr_poll(&state.manager, 1000); // Infinite event loop
+  deinitialize_server_state(UWU_STATE);
   return 0;
 }
