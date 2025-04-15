@@ -261,6 +261,7 @@ int main(int argc, char *argv[]) {
   struct sigaction action = {};
   action.sa_handler = shutdown_server;
   sigaction(SIGINT, &action, NULL);
+  sigaction(SIGTERM, &action, NULL);
 
   // Parse command-line flags
   for (int i = 1; i < argc; i++) {
