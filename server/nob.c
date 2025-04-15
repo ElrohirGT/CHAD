@@ -1,11 +1,12 @@
 #include <stdio.h>
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
-#include "../deps/nob.h/nob.h"
+#include "./deps/nob/nob.h"
 
 #define BUILD_FOLDER "build/"
 #define SRC_FOLDER "src/"
-#define LIBWEBSOCKET_BUILD_FOLDER "../deps/libwebsockets/build/"
+#define DEPS_FOLDER "deps/"
+#define MONGOOSE_DIR DEPS_FOLDER "mongoose/"
 
 #define HELP
 
@@ -30,21 +31,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Usage: nob [-compiler options]\n"
                     "Compiler options:\n"
                     "  -v: Compiler with verbosity enabled.\n"
-                    "  -d: Rebuild dependencies.\n"
                     "  -h: Display help menu.\n");
     return 1;
   }
 
-  bool should_rebuild_deps = false;
-  if (args_contains(argc, argv, "-d", 2)) {
-    nob_log(NOB_WARNING, "Will rebuild dependencies!");
-    should_rebuild_deps = true;
-  }
-
-  bool compile_wit_verbosity = false;
+  bool compile_with_verbosity = false;
   if (args_contains(argc, argv, "-v", 2)) {
     nob_log(NOB_WARNING, "Will compile with verbosity!");
-    compile_wit_verbosity = true;
+    compile_with_verbosity = true;
   }
 
   Cmd cmd = {0};
@@ -52,42 +46,15 @@ int main(int argc, char **argv) {
   if (!mkdir_if_not_exists(BUILD_FOLDER))
     return 1;
 
-  if (should_rebuild_deps) {
-    nob_cmd_append(&cmd, "bash", "-c", "rm -rf ../deps/libwebsockets/build/");
-    if (!nob_cmd_run_sync_and_reset(&cmd)) {
-      nob_log(NOB_WARNING, "Failed to remove libwebsockets build directory! "
-                           "Was this a mistake?");
-    }
-
-    if (!mkdir_if_not_exists("../deps/libwebsockets/build/"))
-      return 1;
-
-    nob_cmd_append(&cmd, "bash", "-c",
-                   "cd ../deps/libwebsockets/build/ && cmake .. && make");
-    if (!nob_cmd_run_sync_and_reset(&cmd))
-      return 1;
-  }
-
   String_Builder sb = {0};
   const char *compiler = "clang ";
-  if (compile_wit_verbosity) {
+  if (compile_with_verbosity) {
     compiler = "clang -v ";
   }
 
   sb_append_cstr(&sb, compiler);
   sb_append_cstr(&sb, "-Wall -Werror -fuse-ld=lld ");
-  sb_append_cstr(&sb, "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER "include "
-                      "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
-                      "include/libwebsockets "
-                      "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
-                      "include/libwebsockets/abstract "
-                      "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
-                      "include/libwebsockets/abstract/protocols "
-                      "-I\"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER
-                      "include/libwebsockets/abstract/transports "
-                      "-L$(realpath \"$PWD\"/" LIBWEBSOCKET_BUILD_FOLDER "lib) "
-                      "-lwebsockets "
-                      "-o build/main -flto " SRC_FOLDER "main.c");
+  sb_append_cstr(&sb, "-o build/main " SRC_FOLDER "main.c");
 
   nob_cmd_append(&cmd, "bash", "-c", sb.items);
   if (!nob_cmd_run_sync_and_reset(&cmd))

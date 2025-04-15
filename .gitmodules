@@ -1,9 +1,0 @@
-[submodule "deps/nob.h"]
-	path = deps/nob.h
-	url = https://github.com/tsoding/nob.h
-[submodule "deps/libwebsockets"]
-	path = deps/libwebsockets
-	url = https://libwebsockets.org/repo/libwebsockets
-[submodule "deps/facil.io"]
-	path = deps/facil.io
-	url = https://github.com/boazsegev/facil.io
