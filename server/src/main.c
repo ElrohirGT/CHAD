@@ -3,13 +3,208 @@
 //
 // Example Websocket server. See https://mongoose.ws/tutorials/websocket-server/
 
+#include "../../lib/lib.c"
+#include "../deps/hashmap/hashmap.h"
 #include "../deps/mongoose/mongoose.c"
 
+/* *****************************************************************************
+Constants
+***************************************************************************** */
 static const char *s_listen_on = "ws://localhost:8000";
 static const char *s_web_root = ".";
 static const char *s_ca_path = "ca.pem";
 static const char *s_cert_path = "cert.pem";
 static const char *s_key_path = "key.pem";
+
+// Global group chat
+static const UWU_String GROUP_CHAT_CHANNEL = {.data = "~", .length = 1};
+
+// The max quantity of messages a chat history can hold...
+// This value CAN'T be higher than 255 since that's the maximum number of
+// messages that can be sent over the wire.
+static const size_t MAX_MESSAGES_PER_CHAT = 100;
+
+// The amount of seconds that need to pass in order for a user to become IDLE.
+static const time_t IDLE_SECONDS_LIMIT = 15;
+// The amount of seconds that we wait before checking for IDLE users again.
+static const struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
+
+/* *****************************************************************************
+Server State
+***************************************************************************** */
+
+// Struct to hold all the server state!
+typedef struct {
+  // Saves all the active usernames currently connected in this server.
+  UWU_UserList active_usernames;
+  // Saves all the messages from the group chat.
+  UWU_ChatHistory group_chat;
+  // Saves all the chat histories.
+  // Key: The combination of both usernames as a UWU_String.
+  // Value: An UWU_History item.
+  struct hashmap_s chats;
+  // Flag to alert all threads that the server is shutting off.
+  // ONLY THE MAIN thread should update this value!
+  UWU_Bool is_shutting_off;
+  // Arena that holds the maximum amount of data a request can have.
+  // This allows us to manage requests without having to allocate new memory.
+  UWU_Arena req_arena;
+  // Mongoose message manager.
+  struct mg_mgr manager;
+} UWU_ServerState;
+
+static UWU_ServerState *UWU_STATE = NULL;
+
+UWU_ServerState initialize_server_state(UWU_Err err) {
+  UWU_ServerState state = {};
+
+  state.active_usernames = UWU_UserList_init(err);
+  if (err != NO_ERROR) {
+    return state;
+  }
+
+  char *group_chat_name = malloc(sizeof(char));
+  if (group_chat_name == NULL) {
+    err = MALLOC_FAILED;
+    return state;
+  }
+  *group_chat_name = '~';
+  UWU_String uwu_name = {.data = group_chat_name, .length = 1};
+
+  state.group_chat = UWU_ChatHistory_init(255, uwu_name, err);
+  if (err != NO_ERROR) {
+    return state;
+  }
+
+  if (0 != hashmap_create(8, &state.chats)) {
+    err = HASHMAP_INITIALIZATION_ERROR;
+    return state;
+  }
+
+  // The message that has the maximum size is the response to chat history!
+  /* clang-format off */
+  /* | type (1 byte)  | num msgs (1 byte) | length user (1 byte) | username (max 255 bytes) | length msg (1 bye) | msg (max 255 bytes) |*/
+  /* clang-format on */
+  size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+  state.req_arena = UWU_Arena_init(max_msg_size, err);
+  if (err != NO_ERROR) {
+    return state;
+  }
+
+  // TODO: Initialize other server state...
+
+  return state;
+}
+
+void deinitialize_server_state(UWU_ServerState *state) {
+  state->is_shutting_off = TRUE;
+
+  fprintf(stderr, "Cleaning User List...\n");
+  UWU_UserList_deinit(&state->active_usernames);
+  fprintf(stderr, "Cleaning group Chat history...\n");
+  UWU_ChatHistory_deinit(&state->group_chat);
+  fprintf(stderr, "Cleaning DM Chat histories...\n");
+  hashmap_destroy(&state->chats);
+  fprintf(stderr, "Cleaning request arena...\n");
+  UWU_Arena_deinit(state->req_arena);
+}
+
+/* *****************************************************************************
+Utilities functions
+***************************************************************************** */
+void update_last_action(UWU_User *info) {
+  info->last_action = time(NULL);
+  if ((time_t)-1 == info->last_action) {
+    UWU_PANIC("Fatal: Failed to obtain curren time!");
+    return;
+  }
+}
+
+// Broadcasts an msg to all available connections!
+void broadcast_msg(struct mg_mgr *mgr, UWU_String *msg) {
+  for (struct mg_connection *wc = mgr->conns; wc != NULL; wc = wc->next) {
+    size_t sent_count =
+        mg_ws_send(wc, msg->data, msg->length, WEBSOCKET_OP_BINARY);
+    if (sent_count != msg->length) {
+      UWU_PANIC("Fatal: Couln't send the complete message!");
+    }
+  }
+}
+
+UWU_String create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
+  UWU_Err err = NO_ERROR;
+  int data_length = 2 + info->username.length + 1;
+  char *data = UWU_Arena_alloc(arena, sizeof(char) * data_length, err);
+
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to allocate space for message `changed_status`");
+    UWU_String dummy = {};
+    return dummy;
+  }
+
+  data[0] = CHANGED_STATUS;
+  data[1] = info->username.length;
+  for (int i = 0; i < info->username.length; i++) {
+    UWU_String u = info->username;
+    data[2 + i] = UWU_String_charAt(&u, i);
+  }
+  // memcpy(&data[2], &info->username.data, info->username.length);
+  data[data_length - 1] = info->status;
+
+  UWU_String msg = {.length = data_length, .data = data};
+  return msg;
+}
+
+/* *****************************************************************************
+IDLE Detector
+***************************************************************************** */
+static void *idle_detector(void *p) {
+  UWU_Err err = NO_ERROR;
+  UWU_Arena arena = UWU_Arena_init(2 + 1 + 255, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to initialize idle_detector arena!");
+    return NULL;
+  }
+
+  // UWU_UserList *active_usernames = (UWU_UserList *)p;
+  // fprintf(stderr, "Info: active_usernames received in: %p\n",
+  //         (void *)&UWU_STATE->active_usernames);
+  UWU_UserList usernames = UWU_STATE->active_usernames;
+  while (!UWU_STATE->is_shutting_off) {
+    fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
+            usernames.length);
+    time_t now = time(NULL);
+
+    if ((clock_t)-1 == now) {
+      UWU_PANIC("Fatal: Failed to get current clock time!");
+      UWU_Arena_deinit(arena);
+      return NULL;
+    }
+
+    for (struct UWU_UserListNode *current = usernames.start; current != NULL;
+         current = current->next) {
+      if (current->is_sentinel) {
+        continue;
+      }
+
+      time_t seconds_diff = difftime(now, current->data.last_action);
+      UWU_ConnStatus status = current->data.status;
+      if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
+        UWU_Arena_reset(&arena);
+        fprintf(stderr, "Info: Updating %.*s as INACTIVE!\n",
+                current->data.username.length, current->data.username.data);
+        current->data.status = INACTIVE;
+        UWU_String msg = create_changed_status_message(&arena, &current->data);
+        broadcast_msg(&UWU_STATE->manager, &msg);
+      }
+    }
+
+    nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
+  }
+
+  UWU_Arena_deinit(arena);
+  return NULL;
+}
 
 // This RESTful server implements the following endpoints:
 //   /websocket - upgrade to Websocket, and implement websocket echo server
