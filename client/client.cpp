@@ -66,19 +66,31 @@ class UWUUserQT : public QWidget {
 
     public:
         UWUUserQT(const char username[], const char ip[], QWidget *parent = nullptr) : QWidget(parent) {
-    
-        std::strncpy(username_, username, sizeof(username_) - 1);
-        username_[sizeof(username_) - 1] = '\0';
-    
-        std::strncpy(ip_, ip, sizeof(ip_) - 1);
-        ip_[sizeof(ip_) - 1] = '\0';
+            
+            std::strncpy(username_, username, sizeof(username_) - 1);
+            
+            username_[sizeof(username_) - 1] = '\0';
+            
+            std::strncpy(ip_, ip, sizeof(ip_) - 1);
+            ip_[sizeof(ip_) - 1] = '\0';
+            
+        QPalette UWUUSerQTPallete = this->palette();
+        UWUUSerQTPallete.setColor(QPalette::Window, QColor(189, 189, 189));
+        this->setAutoFillBackground(true);
+        this->setPalette(UWUUSerQTPallete);
+
         QVBoxLayout *verticalLayout = new QVBoxLayout(this);
+        verticalLayout->setContentsMargins(0,0,0,0);
         QLabel *nameLabel = new QLabel(username);
         QLabel *ipLabel = new QLabel(ip);
+
+        nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        ipLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         
         verticalLayout->addWidget(nameLabel);
         verticalLayout->addWidget(ipLabel);
-    
+
+        setStyleSheet("padding: 5px");
     }
     
     
@@ -133,20 +145,30 @@ class UWUUserDelegate : public QStyledItemDelegate {
                 if (userDataVar.canConvert<UserData>()) {
                     UserData userData = userDataVar.value<UserData>();
                     UWUUserQT userWidget(userData.name.toLatin1(), userData.ip.toLatin1());
-    
+        
+                    userWidget.setFixedSize(option.rect.size());
+        
                     painter->save();
                     painter->translate(option.rect.topLeft());
                     userWidget.render(painter);
+                    painter->restore();
+
+                    painter->save();
+                    QPen pen(Qt::black);
+                    pen.setWidth(1);
+                    painter->setPen(pen);
+                    painter->drawRect(option.rect.adjusted(0, 0, -1, -1));
                     painter->restore();
                 } else {
                     QStyledItemDelegate::paint(painter, option, index); // Fallback
                 }
             }
         }
+        
     
         QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
             UWUUserQT tempWidget("dummy", "dummy");
-            return tempWidget.sizeHint();
+            return QSize(option.rect.width(), tempWidget.sizeHint().height());
         }
 };
 
@@ -158,42 +180,34 @@ int main(int argc, char *argv[]) {
         {"Maria", "4.5.6"},
         {"Pedro", "7.8.9"}
     };
-    
-    
+
     bool isBusy = false;
-    char name[] = "Jose"; 
-    
+    char name[] = "Jose";
+
     // Crear la ventana principal
     MainWindow mainWindow;
-    
+
     UWUUserModel *userModel = new UWUUserModel(users);
     QListView *chatUsers = new QListView();
     chatUsers->setModel(userModel);
+    chatUsers->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); // Añadido
 
     UWUUserDelegate *userDelegate = new UWUUserDelegate();
     chatUsers->setItemDelegate(userDelegate);
-    
+
     // Create button for handling busy status
     ActiveButton *activeButton = new ActiveButton(isBusy);
-    
+
     // Generates Widgets
-    // QWidgets are the base component for the QT aplicattion
-    // Contains all widgets
     QWidget *mainWidget = new QWidget();
-    // Contains the components of the top bar of chat
     QWidget *topWidget = new QWidget();
-    // Contains name and ip address
     QWidget *nameWidget = new QWidget();
-    // Contains all widgets remaining 
     QWidget *centralWidget = new QWidget();
-    // Widget that shows the list of users to chat with
     QWidget *chatListWidget = new QWidget();
-    // Widget where user sees and send messages
     QWidget *chatWidget = new QWidget();
     mainWindow.setCentralWidget(mainWidget);
 
     // Sets Layouts
-    // Layouts organizes geometrically the elements inside a Widget
     QVBoxLayout *mainLayout = new QVBoxLayout();
     mainLayout->setContentsMargins(0, 0, 0, 0);
     QHBoxLayout *centralLayout = new QHBoxLayout();
@@ -214,8 +228,7 @@ int main(int argc, char *argv[]) {
     nameLabel->setStyleSheet("font-size: 25px;");
 
     QLabel *chatAreaLabel = new QLabel("Área de Chat");
-    
-    //Button for changing status to Busy or Active
+
     QPushButton *statusButton = new QPushButton();
     statusButton->setMaximumWidth(50);
     statusButton->setContentsMargins(0, 0, 0, 100);
@@ -237,14 +250,15 @@ int main(int argc, char *argv[]) {
     topLayout->addWidget(nameWidget);
     topLayout->addWidget(activeButton);
     topWidget->setLayout(topLayout);
-    
+
     chatListWidget->setLayout(chatListLayout);
     chatListLayout->addWidget(chatUsers);
-    
+    chatListLayout->addWidget(chatAreaLabel);
+
     chatAreaLayout->addWidget(chatAreaLabel);
     chatWidget->setLayout(chatAreaLayout);
-    
-    centralLayout->addWidget(chatListWidget);
+
+    centralLayout->addWidget(chatListWidget, 0); // Ajustado stretch
     centralLayout->addWidget(chatWidget, 1);
     centralWidget->setLayout(centralLayout);
 
@@ -252,24 +266,8 @@ int main(int argc, char *argv[]) {
     mainLayout->addWidget(centralWidget, 1);
     mainWidget->setLayout(mainLayout);
 
-    // 4. Crear layouts
-
-    // Añadir el editor de texto al layout principal
-    //mainLayout->addWidget(textEditor);
-
-    // Añadir el botón y la etiqueta al layout horizontal
-    //buttonLayout->addWidget(getTextButton);
-    //buttonLayout->addWidget(textLengthLabel);
-
-    // Añadir el layout horizontal al layout principal
-
-    // Establecer el layout principal como el layout del widget central
-
-    // 6. Mostrar la ventana principal
     mainWindow.resize(1000, 1500);
     mainWindow.show();
 
-    // 7. Iniciar el bucle de eventos
     return app.exec();
 }
-
