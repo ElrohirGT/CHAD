@@ -21,6 +21,7 @@
 #include <QStyledItemDelegate>
 #include <QModelIndex>
 #include <QAbstractItemView>
+#include <QLineEdit>
 
 
 // class for creating the window project
@@ -140,31 +141,44 @@ class UWUUserDelegate : public QStyledItemDelegate {
         UWUUserDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
     
         void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
-            if (index.isValid()) {
-                QVariant userDataVar = index.data(Qt::UserRole + 1);
-                if (userDataVar.canConvert<UserData>()) {
-                    UserData userData = userDataVar.value<UserData>();
-                    UWUUserQT userWidget(userData.name.toLatin1(), userData.ip.toLatin1());
+            if (!index.isValid()) return;
         
-                    userWidget.setFixedSize(option.rect.size());
-        
-                    painter->save();
-                    painter->translate(option.rect.topLeft());
-                    userWidget.render(painter);
-                    painter->restore();
-
-                    painter->save();
-                    QPen pen(Qt::black);
-                    pen.setWidth(1);
-                    painter->setPen(pen);
-                    painter->drawRect(option.rect.adjusted(0, 0, -1, -1));
-                    painter->restore();
-                } else {
-                    QStyledItemDelegate::paint(painter, option, index); // Fallback
-                }
+            QVariant userDataVar = index.data(Qt::UserRole + 1);
+            if (!userDataVar.canConvert<UserData>()) {
+                QStyledItemDelegate::paint(painter, option, index);
+                return;
             }
-        }
         
+            UserData user = userDataVar.value<UserData>();
+        
+            // Colores según hover
+            QColor bgColor;
+
+            if (option.state & QStyle::State_Selected) {
+                bgColor = QColor(31, 181, 25); // selected 
+            } else if (option.state & QStyle::State_MouseOver) {
+                bgColor = QColor(83, 247, 72); // (hover)
+            } else {
+                bgColor = QColor(189, 189, 189); // base
+            }            QColor textColor = Qt::black;
+        
+            painter->save();
+            painter->fillRect(option.rect, bgColor);
+        
+            painter->setPen(textColor);
+            QFont font = option.font;
+            font.setBold(true);
+            painter->setFont(font);
+        
+            QRect nameRect = option.rect.adjusted(5, 5, -5, -option.rect.height() / 2);
+            QRect ipRect = option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
+        
+            painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, user.name);
+            painter->setFont(option.font); // IP sin negrita
+            painter->drawText(ipRect, Qt::AlignLeft | Qt::AlignVCenter, user.ip);
+        
+            painter->restore();
+        }        
     
         QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
             UWUUserQT tempWidget("dummy", "dummy");
@@ -178,7 +192,22 @@ int main(int argc, char *argv[]) {
     std::vector<UserData> users = {
         {"Jose", "1.2.3"},
         {"Maria", "4.5.6"},
-        {"Pedro", "7.8.9"}
+        {"Pedro", "7.8.9"},
+        {"Jose", "1.2.3"},
+        {"Maria", "4.5.6"},
+        {"Pedro", "7.8.9"},
+        {"Jose", "1.2.3"},
+        {"Maria", "4.5.6"},
+        {"Pedro", "7.8.9"},
+        {"Jose", "1.2.3"},
+        {"Maria", "4.5.6"},
+        {"Pedro", "7.8.9"},
+        {"Jose", "1.2.3"},
+        {"Maria", "4.5.6"},
+        {"Pedro", "7.8.9"},
+        {"Jose", "1.2.3"},
+        {"Maria", "4.5.6"},
+        {"Pedro", "7.8.9"},
     };
 
     bool isBusy = false;
@@ -190,10 +219,22 @@ int main(int argc, char *argv[]) {
     UWUUserModel *userModel = new UWUUserModel(users);
     QListView *chatUsers = new QListView();
     chatUsers->setModel(userModel);
-    chatUsers->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); // Añadido
-
+    chatUsers->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    chatUsers->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    chatUsers->viewport()->setAttribute(Qt::WA_Hover);
+    chatUsers->setAttribute(Qt::WA_Hover);
+    chatUsers->setSelectionMode(QAbstractItemView::SingleSelection);
+    chatUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
+    chatUsers->setMouseTracking(true);
+    chatUsers->viewport()->setMouseTracking(true);
+    
+    
     UWUUserDelegate *userDelegate = new UWUUserDelegate();
     chatUsers->setItemDelegate(userDelegate);
+    
+    QObject::connect(chatUsers, &QListView::entered, chatUsers, [=](const QModelIndex &index){
+        chatUsers->update(index);
+    });
 
     // Create button for handling busy status
     ActiveButton *activeButton = new ActiveButton(isBusy);
@@ -253,9 +294,12 @@ int main(int argc, char *argv[]) {
 
     chatListWidget->setLayout(chatListLayout);
     chatListLayout->addWidget(chatUsers);
-    chatListLayout->addWidget(chatAreaLabel);
+
+    QLineEdit *chatInput = new QLineEdit();
+    chatInput->setPlaceholderText("Write a message");
 
     chatAreaLayout->addWidget(chatAreaLabel);
+    chatAreaLayout->addWidget(chatInput);
     chatWidget->setLayout(chatAreaLayout);
 
     centralLayout->addWidget(chatListWidget, 0); // Ajustado stretch
@@ -266,7 +310,7 @@ int main(int argc, char *argv[]) {
     mainLayout->addWidget(centralWidget, 1);
     mainWidget->setLayout(mainLayout);
 
-    mainWindow.resize(1000, 1500);
+    mainWindow.resize(1200, 1000);
     mainWindow.show();
 
     return app.exec();
