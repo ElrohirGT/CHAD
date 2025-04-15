@@ -33,11 +33,12 @@ you.
 
 ## Running the project
 
-Since the projects dinamically links to the libwebsocket build inside `./deps`,
-then it can't find the library when you try to execute the binary! There's
-solutions to this of course. On Linux you can run:
+Just run the binary! If you want to use the special flags to modify something
+you can just use the `-h` flag to see the help menu!
 
 ```bash
 # This commands assumes you're inside `./server`
-LD_PRELOAD=../deps/libwebsockets/build/lib/libwebsockets.so.19 ./build/main
+./build/main
+# If you want to modify the port or binding address just run it with the -h flag to see the options!
+# ./build/main -h
 ```
