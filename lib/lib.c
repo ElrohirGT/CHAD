@@ -1,5 +1,3 @@
-#include "fiobject.h"
-#include "http.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -320,31 +318,6 @@ char UWU_String_charAt(UWU_String *str, size_t idx) {
   return str->data[idx];
 }
 
-// Copies a fiobj into a `UWU_String`.
-//
-// `obj` must be a `FIOBJ_T_STRING`, if not this function panics!
-//
-// To free this data please see `UWU_String_free`.
-UWU_String UWU_String_copyFromFio(FIOBJ obj, UWU_Err err) {
-  UWU_String str = {};
-
-  if (!FIOBJ_TYPE_IS(obj, FIOBJ_T_STRING)) {
-    UWU_PANIC("Trying to copy from a Fio object that is not a string!");
-    return str;
-  }
-
-  fio_str_info_s c_str = fiobj_obj2cstr(obj);
-  char *data = malloc(c_str.len);
-  for (size_t i = 0; i < c_str.len; i++) {
-    data[i] = c_str.data[i];
-  }
-
-  str.data = data;
-  str.length = c_str.len;
-
-  return str;
-}
-
 // Copies `src` into a new `UWU_String`.
 UWU_String UWU_String_copy(UWU_String *src, UWU_Err err) {
   UWU_String str = {};
@@ -391,9 +364,6 @@ typedef struct {
   UWU_String username;
   UWU_ConnStatus status;
   time_t last_action;
-  // The Websocket connection associated with this user.
-  // This can be null!
-  ws_s *ws;
 } UWU_User;
 
 UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
@@ -408,7 +378,6 @@ UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
   copy.username = user_name_copy;
   copy.status = src->status;
   copy.last_action = src->last_action;
-  copy.ws = src->ws;
 
   return copy;
 }
