@@ -22,6 +22,7 @@
 #include <QModelIndex>
 #include <QAbstractItemView>
 #include <QLineEdit>
+#include <QIcon>
 
 
 // class for creating the window project
@@ -293,6 +294,7 @@ int main(int argc, char *argv[]) {
     QListView *chatMessages = new QListView();
 
     QPushButton *helpButton = new QPushButton();
+    helpButton->setIcon(QIcon("../client/icons/question-icon.jpg"));
     helpButton->setMaximumWidth(50);
     helpButton->setContentsMargins(0, 0, 0, 100);
     QPushButton *statusButton = new QPushButton();
@@ -321,6 +323,8 @@ int main(int argc, char *argv[]) {
 
     QPushButton *sendInput = new QPushButton();
     sendInput->setMaximumWidth(100);
+    sendInput->setIcon(QIcon("../client/icons/send-icond.png"));
+
 
     inputLayout->addWidget(chatInput);
     inputLayout->addWidget(sendInput);
