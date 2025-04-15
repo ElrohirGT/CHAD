@@ -55,7 +55,26 @@ class ActiveButton : public QPushButton {
             qDebug() << "Status:" << status; // Debug print
             externalStatus = status; // change the status from outside the class
             qDebug() << "main status:" << externalStatus; // Debug print
+            update();
         }
+
+        protected:
+            void paintEvent(QPaintEvent *event) override {
+                QPushButton::paintEvent(event);
+
+                QPainter painter(this);
+                painter.setRenderHint(QPainter::Antialiasing);
+
+                QColor circleColor = status ? QColor(0, 255, 0) : QColor(255, 0, 0);
+                painter.setBrush(circleColor);
+                painter.setPen(Qt::NoPen);
+
+                int radius = 10;
+                int centerX = width() / 2;
+                int centerY = height() / 2;
+
+                painter.drawEllipse(QPoint(centerX, centerY), radius, radius);
+            }
     
         // Class attributes
         private:
@@ -246,6 +265,7 @@ int main(int argc, char *argv[]) {
     QWidget *centralWidget = new QWidget();
     QWidget *chatListWidget = new QWidget();
     QWidget *chatWidget = new QWidget();
+    QWidget *inputWidget = new QWidget();
     mainWindow.setCentralWidget(mainWidget);
 
     // Sets Layouts
@@ -254,13 +274,15 @@ int main(int argc, char *argv[]) {
     QHBoxLayout *centralLayout = new QHBoxLayout();
     centralLayout->setContentsMargins(0, 0, 0, 0);
     QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setContentsMargins(0, 0, 0, 0);
+    topLayout->setContentsMargins(0, 0, 10, 0);
     QVBoxLayout *chatListLayout = new QVBoxLayout();
     chatListLayout->setContentsMargins(0, 0, 0, 0);
     QVBoxLayout *chatAreaLayout = new QVBoxLayout();
-    chatAreaLayout->setContentsMargins(0, 0, 0, 0);
+    chatAreaLayout->setContentsMargins(0, 0, 5, 5);
     QVBoxLayout *nameLayout = new QVBoxLayout();
     nameLayout->setContentsMargins(0, 0, 0, 0);
+    QHBoxLayout *inputLayout = new QHBoxLayout();
+    inputLayout->setContentsMargins(0, 0, 0, 0);
 
     QLabel *ipLabel = new QLabel("127.0.0.1");
     ipLabel->setContentsMargins(10,0,0,0);
@@ -268,8 +290,11 @@ int main(int argc, char *argv[]) {
     nameLabel->setContentsMargins(10,0,0,0);
     nameLabel->setStyleSheet("font-size: 25px;");
 
-    QLabel *chatAreaLabel = new QLabel("Área de Chat");
+    QListView *chatMessages = new QListView();
 
+    QPushButton *helpButton = new QPushButton();
+    helpButton->setMaximumWidth(50);
+    helpButton->setContentsMargins(0, 0, 0, 100);
     QPushButton *statusButton = new QPushButton();
     statusButton->setMaximumWidth(50);
     statusButton->setContentsMargins(0, 0, 0, 100);
@@ -279,17 +304,13 @@ int main(int argc, char *argv[]) {
     topWidget->setAutoFillBackground(true);
     topWidget->setPalette(topPalette);
 
-    QPalette chatAreaPalette = chatAreaLabel->palette();
-    chatAreaPalette.setColor(QPalette::Window, QColor(189, 189, 189));
-    chatWidget->setAutoFillBackground(true);
-    chatWidget->setPalette(chatAreaPalette);
-
     nameLayout->addWidget(nameLabel);
     nameLayout->addWidget(ipLabel);
     nameWidget->setLayout(nameLayout);
 
     topLayout->addWidget(nameWidget);
     topLayout->addWidget(activeButton);
+    topLayout->addWidget(helpButton);
     topWidget->setLayout(topLayout);
 
     chatListWidget->setLayout(chatListLayout);
@@ -298,11 +319,18 @@ int main(int argc, char *argv[]) {
     QLineEdit *chatInput = new QLineEdit();
     chatInput->setPlaceholderText("Write a message");
 
-    chatAreaLayout->addWidget(chatAreaLabel);
-    chatAreaLayout->addWidget(chatInput);
+    QPushButton *sendInput = new QPushButton();
+    sendInput->setMaximumWidth(100);
+
+    inputLayout->addWidget(chatInput);
+    inputLayout->addWidget(sendInput);
+    inputWidget->setLayout(inputLayout);
+
+    chatAreaLayout->addWidget(chatMessages, 1);
+    chatAreaLayout->addWidget(inputWidget, 0);
     chatWidget->setLayout(chatAreaLayout);
 
-    centralLayout->addWidget(chatListWidget, 0); // Ajustado stretch
+    centralLayout->addWidget(chatListWidget, 0);
     centralLayout->addWidget(chatWidget, 1);
     centralWidget->setLayout(centralLayout);
 
