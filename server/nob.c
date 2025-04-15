@@ -31,7 +31,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Usage: nob [-compiler options]\n"
                     "Compiler options:\n"
                     "  -v: Compiler with verbosity enabled.\n"
-                    "  -d: Compile dependencies\n"
                     "  -h: Display help menu.\n");
     return 1;
   }
@@ -42,31 +41,7 @@ int main(int argc, char **argv) {
     compile_with_verbosity = true;
   }
 
-  bool compile_dependencies = false;
-  if (args_contains(argc, argv, "-v", 2)) {
-    nob_log(NOB_WARNING, "Will recompile dependencies!");
-    compile_dependencies = true;
-  }
-
   Cmd cmd = {0};
-
-  // if (compile_dependencies) {
-  //   String_Builder sb = {0};
-  //
-  //   const char *compiler = "clang ";
-  //   if (compile_with_verbosity) {
-  //     compiler = "clang -v ";
-  //   }
-  //   sb_append_cstr(&sb, compiler);
-  //
-  // sb_append_cstr(&sb, "-o build/mongoose.a", "");
-  //
-  //
-  //   nob_cmd_append(&cmd, "bash", "-c", sb.items);
-  // if (!nob_cmd_run_sync_and_reset(&cmd)) {
-  // 	return 1;
-  // }
-  // }
 
   if (!mkdir_if_not_exists(BUILD_FOLDER))
     return 1;
