@@ -42,7 +42,7 @@ Server State
 // Struct to hold all the server state!
 typedef struct {
   // Saves all the active usernames currently connected in this server.
-  UWU_UserList active_usernames;
+  UWU_UserList active_users;
   // Saves all the messages from the group chat.
   UWU_ChatHistory group_chat;
   // Saves all the chat histories.
@@ -66,7 +66,7 @@ UWU_ServerState initialize_server_state(UWU_Err err) {
 
   mg_mgr_init(&state.manager);
 
-  state.active_usernames = UWU_UserList_init(err);
+  state.active_users = UWU_UserList_init(err);
   if (err != NO_ERROR) {
     return state;
   }
@@ -111,7 +111,7 @@ void deinitialize_server_state(UWU_ServerState *state) {
   mg_mgr_free(&state->manager);
 
   fprintf(stderr, "Info: Cleaning User List...\n");
-  UWU_UserList_deinit(&state->active_usernames);
+  UWU_UserList_deinit(&state->active_users);
 
   fprintf(stderr, "Info: Cleaning group Chat history...\n");
   UWU_ChatHistory_deinit(&state->group_chat);
@@ -126,6 +126,33 @@ void deinitialize_server_state(UWU_ServerState *state) {
 /* *****************************************************************************
 Utilities functions
 ***************************************************************************** */
+int remove_if_matches(void *context, struct hashmap_element_s *const e) {
+  UWU_String *user_name = context;
+  UWU_String hash_key = {
+      .data = (char *)e->key,
+      .length = e->key_len,
+  };
+
+  UWU_String tmp_after = UWU_String_combineWithOther(user_name, &SEPARATOR);
+  UWU_String tmp_before = UWU_String_combineWithOther(&SEPARATOR, user_name);
+
+  UWU_Bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
+  UWU_Bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
+
+  UWU_String_freeWithMalloc(&tmp_after);
+  UWU_String_freeWithMalloc(&tmp_before);
+
+  if (starts_with_username || ends_with_username) {
+    UWU_ChatHistory *data = e->data;
+
+    UWU_ChatHistory_deinit(data);
+    free(data);
+    return -1;
+  }
+
+  return 0;
+}
+
 void update_last_action(UWU_User *info) {
   info->last_action = time(NULL);
   if ((time_t)-1 == info->last_action) {
@@ -305,8 +332,8 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     }
 
     {
-      UWU_User *user = UWU_UserList_findByName(&UWU_STATE->active_usernames,
-                                               &source_username);
+      UWU_User *user =
+          UWU_UserList_findByName(&UWU_STATE->active_users, &source_username);
       if (user != NULL) {
         fprintf(stderr, "Error: Can't connect to an already used username!\n");
         mg_http_reply(c, 400, "", "INVALID USERNAME");
@@ -319,16 +346,16 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
 
     UWU_Err err = NO_ERROR;
     struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
-    UWU_UserList_insertEnd(&UWU_STATE->active_usernames, &node, err);
+    UWU_UserList_insertEnd(&UWU_STATE->active_users, &node, err);
     if (err != NO_ERROR) {
       UWU_PANIC("Fatal: Failed to add username `%.*s` to the UserCollection!\n",
                 source_username.length, source_username.data);
       return;
     }
     fprintf(stderr, "Info: Currently %zu active users!\n",
-            UWU_STATE->active_usernames.length);
+            UWU_STATE->active_users.length);
 
-    for (struct UWU_UserListNode *current = UWU_STATE->active_usernames.start;
+    for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
          current != NULL; current = current->next) {
 
       if (current->is_sentinel) {
@@ -364,7 +391,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       char buff[max_length];
       UWU_String msg = changed_status_builder(buff, &user);
 
-      for (struct UWU_UserListNode *current = UWU_STATE->active_usernames.start;
+      for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
            current != NULL; current = current->next) {
 
         if (current->is_sentinel) {
@@ -381,6 +408,15 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       }
     }
 
+    UWU_String *copy = malloc(sizeof(UWU_String));
+    if (copy == NULL) {
+      fprintf(stderr, "Error: Can't allocate enough memory to save username!");
+      mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
+      return;
+    }
+    *copy = UWU_String_copy(&source_username, err);
+    c->fn_data = copy;
+
     mg_ws_upgrade(c, hm, NULL);
     // Serve REST response
     // mg_http_reply(c, 200, "", "{\"result\": %d}\n", 123);
@@ -391,7 +427,20 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
 
     // Connection closed!
   } else if (ev == MG_EV_CLOSE) {
-    // FIXME: Add logic for deleting a user once a connection closes!
+
+    UWU_String *username = c->fn_data;
+    UWU_User user = {.username = *username, .status = DISCONNETED};
+
+    UWU_UserList_removeByUsernameIfExists(&UWU_STATE->active_users, username);
+    hashmap_iterate_pairs(&UWU_STATE->chats, remove_if_matches, username);
+
+    int max_length = 3 + 255;
+    char buff[max_length];
+    UWU_String msg = changed_status_builder(buff, &user);
+    broadcast_msg(&UWU_STATE->manager, &msg);
+
+    UWU_String_freeWithMalloc(c->fn_data);
+    free(c->fn_data);
   }
 }
 
