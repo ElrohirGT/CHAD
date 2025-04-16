@@ -1,36 +1,46 @@
-#include <stdlib.h>
+#include "../lib/lib.c"
 #include "./deps/hashmap/hashmap.h"
 #include "mongoose.h"
 #include <stdio.h>
-#include "../lib/lib.c"
+#include <stdlib.h>
 
+// ***********************************************
+// CONSTANTS
+// ***********************************************
+static const size_t MAX_MESSAGES_PER_CHAT = 100;
+static const size_t MAX_CHARACTERS_INPUT = 254;
 
-// ===================================
-//      MODEL
-// ===================================
+// ***********************************************
+// MODEL
+// ***********************************************
 
-static UWU_User UWU_CurrentUser;
+typedef struct {
+  static UWU_User UWU_CurrentUser;
 
-// Stores the users the client can messages to.
-static UWU_UserList UWU_ActiveUsers;
-// A pointer to the current selected chat, set to NULL if no client is selected.
-static UWU_ChatHistory *UWU_currentChat;
-// Group chat user
-static UWU_User UWU_GroupChat;
+  // Stores the users the client can messages to.
+  static UWU_UserList UWU_ActiveUsers;
+  // A pointer to the current selected chat, set to NULL if no client is
+  // selected.
+  static UWU_ChatHistory *UWU_currentChat;
+  // Group chat user
+  static UWU_User UWU_GroupChat;
   // Saves all the chat histories.
   // Key: The name of the user this client chat chat to.
   // Value: An UWU_History item.
-struct hashmap_s chats;
+  struct hashmap_s chats;
+} UWU_ClientState;
 
-// CONSTANTS
-static const size_t MAX_MESSAGES_PER_CHAT = 100;
-static const size_t MAX_CHARACTERS_INPUT = 254;
+static UWU_ClientState *UWU_STATE = NULL;
 
 // Connection to the websocket server
 static mg_connection *ws_conn;
 
 static const char *s_url = "ws://ws.vi-server.org/mirror/";
 static const char *s_ca_path = "ca.pem";
+
+void init_client_state(UWU_err *err) {}
+
+void deinit_client_state(UWU_err *err) {}
 
 // ===================================
 //      UTILS
@@ -92,7 +102,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
   }
 }
 
-/// @brief Sends a message to 
+/// @brief Sends a message to
 void list_users_handler() {
   char data[1] = {1};
   mg_ws_send(ws_conn, data, 1, WEBSOCKET_OP_BINARY);
@@ -174,7 +184,7 @@ int main(int argc, char *argv[]) {
     if (strcmp(argv[i], "-url") == 0 && argv[i + 1] != NULL) {
       s_url = argv[++i];
     } else if (strcmp(argv[i], "-ca") == 0 && argv[i + 1] != NULL) {
-      s_ca_path = argv[++i];
+      // s_ca_path = argv[++i];
     } else {
       printf("Usage: %s OPTIONS\n"
              "  -ca PATH  - Path to the CA file, default: '%s'\n"
