@@ -388,6 +388,10 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     // Got websocket frame. Received data is wm->data. Echo it back!
     struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
     mg_ws_send(c, wm->data.buf, wm->data.len, WEBSOCKET_OP_TEXT);
+
+    // Connection closed!
+  } else if (ev == MG_EV_CLOSE) {
+    // FIXME: Add logic for deleting a user once a connection closes!
   }
 }
 
