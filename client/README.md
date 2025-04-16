@@ -6,6 +6,7 @@
 # REMEMBER! From within the repository root!
 nix develop
 ```
+> Sometimes it might not work, in that case you must have installed `cmake` and `Qt` on your system.
 
 ## Getting started
 
@@ -38,5 +39,5 @@ With the project build now the executable is created in the build directory and 
 
 ```bash
 # Be sure you are in the build directory or specify it in the command when runnung the project
-./chad_client
+./chad_ui
 ```
