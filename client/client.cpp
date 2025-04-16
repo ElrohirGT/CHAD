@@ -11,7 +11,7 @@
 #include <QPushButton>
 #include <QDebug>
 #include <QListView>
-#include <QStringListModel>
+#include<QStringListModel>
 #include <QPainter>
 #include <QVariant>
 #include <QObject>
@@ -23,6 +23,7 @@
 #include <QAbstractItemView>
 #include <QLineEdit>
 #include <QIcon>
+#include "./deps/hashmap/hashmap.h"
 
 
 // class for creating the window project
@@ -294,7 +295,7 @@ int main(int argc, char *argv[]) {
     QListView *chatMessages = new QListView();
 
     QPushButton *helpButton = new QPushButton();
-    helpButton->setIcon(QIcon("../client/icons/question-icon.jpg"));
+    helpButton->setIcon(QIcon("icons/question-icon.jpg"));
     helpButton->setMaximumWidth(50);
     helpButton->setContentsMargins(0, 0, 0, 100);
     QPushButton *statusButton = new QPushButton();
@@ -323,7 +324,7 @@ int main(int argc, char *argv[]) {
 
     QPushButton *sendInput = new QPushButton();
     sendInput->setMaximumWidth(100);
-    sendInput->setIcon(QIcon("../client/icons/send-icond.png"));
+    sendInput->setIcon(QIcon("icons/send-icond.png"));
 
 
     inputLayout->addWidget(chatInput);
