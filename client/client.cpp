@@ -23,8 +23,6 @@
 #include <QAbstractItemView>
 #include <QLineEdit>
 #include <QIcon>
-#include "./deps/hashmap/hashmap.h"
-
 
 // class for creating the window project
 class MainWindow : public QMainWindow {
