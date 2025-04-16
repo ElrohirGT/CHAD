@@ -27,6 +27,7 @@
           pkgs.clang-tools
           pkgs.lld
           pkgs.go-task
+          pkgs.gf
 
           # libwebsocket deps
           pkgs.cmake
