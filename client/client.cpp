@@ -23,6 +23,7 @@
 #include <QAbstractItemView>
 #include <QLineEdit>
 #include <QIcon>
+#include "../lib/lib.c"
 
 // class for creating the window project
 class MainWindow : public QMainWindow {

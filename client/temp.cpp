@@ -17,6 +17,10 @@ static UWU_UserList UWU_ActiveUsers;
 static UWU_ChatHistory *UWU_currentChat;
 // Group chat user
 static UWU_User UWU_GroupChat;
+  // Saves all the chat histories.
+  // Key: The name of the user this client chat chat to.
+  // Value: An UWU_History item.
+struct hashmap_s chats;
 
 // CONSTANTS
 static const size_t MAX_MESSAGES_PER_CHAT = 100;
@@ -88,6 +92,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
   }
 }
 
+/// @brief Sends a message to 
 void list_users_handler() {
   char data[1] = {1};
   mg_ws_send(ws_conn, data, 1, WEBSOCKET_OP_BINARY);

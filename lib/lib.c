@@ -117,7 +117,7 @@ typedef struct {
 // Initializes a new arena with the specified capacity!
 UWU_Arena UWU_Arena_init(size_t capacity, UWU_Err err) {
   UWU_Arena arena = {};
-  arena.data = malloc(sizeof(uint8_t) * capacity);
+  arena.data = (uint8_t*)malloc(sizeof(uint8_t) * capacity);
 
   if (arena.data == NULL) {
     err = MALLOC_FAILED;
@@ -237,7 +237,7 @@ UWU_Bool UWU_String_firstGoesFirst(const UWU_String *const first,
 UWU_String UWU_String_combineWithOther(const UWU_String *const first,
                                        const UWU_String *const second) {
   UWU_String str = {.length = first->length + second->length};
-  str.data = malloc(str.length);
+  str.data = (char*)malloc(str.length);
 
   if (str.data == NULL) {
     UWU_PANIC("Malloc failed when trying to combine two strings!");
@@ -258,7 +258,7 @@ UWU_String UWU_String_tryCombineWithOther(const UWU_String *const first,
                                           const UWU_String *const second,
                                           UWU_Err err) {
   UWU_String str = {.length = first->length + second->length};
-  str.data = malloc(str.length);
+  str.data = (char*)malloc(str.length);
 
   if (str.data == NULL) {
     err = MALLOC_FAILED;
@@ -278,7 +278,7 @@ void UWU_String_freeWithMalloc(const UWU_String *const str) { free(str->data); }
 
 // Attempts to converts from a `UWU_String` to a null terminated string.
 char *UWU_String_tryToCStr(const UWU_String *const str, UWU_Err err) {
-  char *c_str = malloc(str->length + 1);
+  char *c_str = (char*)malloc(str->length + 1);
 
   if (c_str == NULL) {
     err = MALLOC_FAILED;
@@ -297,7 +297,7 @@ char *UWU_String_tryToCStr(const UWU_String *const str, UWU_Err err) {
 //
 // If malloc fails then panics.
 char *UWU_String_toCStr(const UWU_String *const str) {
-  char *c_str = malloc(str->length + 1);
+  char *c_str = (char*)malloc(str->length + 1);
 
   if (c_str == NULL) {
     UWU_PANIC("Can't convert UWU_String into C_str! (len: %d, data: %s)",
@@ -327,7 +327,7 @@ char UWU_String_charAt(const UWU_String *const str, size_t idx) {
 // Copies `src` into a new `UWU_String`.
 UWU_String UWU_String_copy(const UWU_String *const src, UWU_Err err) {
   UWU_String str = {};
-  str.data = malloc(src->length);
+  str.data = (char*)malloc(src->length);
 
   if (src->data == NULL) {
     err = MALLOC_FAILED;
@@ -414,10 +414,10 @@ struct UWU_UserListNode {
 // Both `next` and `previous` pointers are set to `NULL`.
 struct UWU_UserListNode UWU_UserListNode_newWithValue(UWU_User data) {
   struct UWU_UserListNode node = {
+      .is_sentinel = FALSE,
       .data = data,
       .previous = NULL,
       .next = NULL,
-      .is_sentinel = FALSE,
   };
 
   return node;
@@ -426,7 +426,7 @@ struct UWU_UserListNode UWU_UserListNode_newWithValue(UWU_User data) {
 // Creates a copy from `other` and allocates it on the heap.
 struct UWU_UserListNode *UWU_UserListNode_copy(struct UWU_UserListNode *other,
                                                UWU_Err err) {
-  struct UWU_UserListNode *copy = malloc(sizeof(struct UWU_UserListNode));
+  struct UWU_UserListNode *copy = (UWU_UserListNode*)malloc(sizeof(struct UWU_UserListNode));
   if (copy == NULL) {
     err = MALLOC_FAILED;
     return NULL;
@@ -688,7 +688,7 @@ UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_String channel_name,
                                      UWU_Err err) {
   UWU_ChatHistory ht = {};
 
-  ht.messages = malloc(sizeof(UWU_ChatEntry[capacity]));
+  ht.messages = (UWU_ChatEntry*)malloc(sizeof(UWU_ChatEntry[capacity]));
   if (ht.messages == NULL) {
     err = MALLOC_FAILED;
     return ht;
