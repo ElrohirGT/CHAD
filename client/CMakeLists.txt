@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.27)
 project(chad_ui C CXX)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_AUTOMOC ON)
 
 # PTHREADS LIBRARY
 find_package(Threads REQUIRED)

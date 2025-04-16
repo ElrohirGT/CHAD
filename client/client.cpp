@@ -27,6 +27,7 @@
 
 // class for creating the window project
 class MainWindow : public QMainWindow {
+    Q_OBJECT
     public:
         MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
             setWindowTitle("CHAD GUI");
@@ -41,6 +42,7 @@ class MainWindow : public QMainWindow {
 
 // Class for the status button
 class ActiveButton : public QPushButton {
+    Q_OBJECT
     public: 
         ActiveButton(bool &RefStatus, QWidget *parent = nullptr) : QPushButton(parent), status(false), externalStatus(RefStatus) {
             setMaximumWidth(50);
@@ -84,7 +86,7 @@ class ActiveButton : public QPushButton {
 };
 
 class UWUUserQT : public QWidget {
-
+    Q_OBJECT
     public:
         UWUUserQT(const char username[], const char ip[], QWidget *parent = nullptr) : QWidget(parent) {
             
@@ -127,6 +129,7 @@ struct UserData {
 };
 
 class UWUUserModel : public QAbstractListModel {
+    Q_OBJECT
 public:
     UWUUserModel(const std::vector<UserData>& users, QObject *parent = nullptr)
         : QAbstractListModel(parent), userDataList(users) {}
@@ -157,6 +160,7 @@ private:
 };
 
 class UWUUserDelegate : public QStyledItemDelegate {
+    Q_OBJECT
     public:
         UWUUserDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
     
@@ -205,6 +209,8 @@ class UWUUserDelegate : public QStyledItemDelegate {
             return QSize(option.rect.width(), tempWidget.sizeHint().height());
         }
 };
+
+#include "client.moc"
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
