@@ -13,7 +13,7 @@
 Constants
 ***************************************************************************** */
 static const char *s_listen_on = "ws://localhost:8000";
-static const char *s_web_root = ".";
+// static const char *s_web_root = ".";
 static const char *s_ca_path = "ca.pem";
 static const char *s_cert_path = "cert.pem";
 static const char *s_key_path = "key.pem";
@@ -236,6 +236,7 @@ UWU_String changed_status_builder(char *buff, UWU_User *info) {
   }
 
   buff[msg_length] = info->status;
+  msg_length++;
 
   def.data = buff;
   def.length = msg_length;
@@ -265,13 +266,14 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       return;
     }
 
+    int variable_name_length = 5;
     UWU_String EXPECTED_QUERY_START = {
-        .data = "?name=",
-        .length = 6,
+        .data = "name=",
+        .length = variable_name_length,
     };
     UWU_String query_start = {
         .data = hm->query.buf,
-        .length = 6,
+        .length = variable_name_length,
     };
 
     if (!UWU_String_equal(&EXPECTED_QUERY_START, &query_start)) {
@@ -279,20 +281,20 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       mg_http_reply(c, 400, "", "INVALID USERNAME QUERY FORMAT");
       return;
     }
-    if (hm->query.len - 6 <= 0) {
+    if (hm->query.len - variable_name_length <= 0) {
       fprintf(stderr, "Error: Username is too short!\n");
       mg_http_reply(c, 400, "", "USERNAME CANT BE EMPTY");
       return;
     }
-    if (hm->query.len - 6 > 255) {
+    if (hm->query.len - variable_name_length > 255) {
       fprintf(stderr, "Error: Username is too large!\n");
       mg_http_reply(c, 400, "", "USERNAME TOO LARGE");
       return;
     }
 
     UWU_String source_username = {
-        .data = &hm->query.buf[6],
-        .length = hm->query.len - 6,
+        .data = &hm->query.buf[variable_name_length],
+        .length = hm->query.len - variable_name_length,
     };
 
     if (UWU_String_equal(&GROUP_CHAT_CHANNEL, &source_username)) {
@@ -312,14 +314,14 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       }
     }
 
-    UWU_User user = {.username = source_username, .status = ACTIVE};
+    UWU_User user = {.username = source_username, .status = ACTIVE, .conn = c};
     update_last_action(&user);
 
     UWU_Err err = NO_ERROR;
     struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
     UWU_UserList_insertEnd(&UWU_STATE->active_usernames, &node, err);
     if (err != NO_ERROR) {
-      UWU_PANIC("Fatal: Failed to add username `%.*s` to the UserCollection!",
+      UWU_PANIC("Fatal: Failed to add username `%.*s` to the UserCollection!\n",
                 source_username.length, source_username.data);
       return;
     }
@@ -350,7 +352,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, err);
       if (0 !=
           hashmap_put(&UWU_STATE->chats, combined.data, combined.length, ht)) {
-        UWU_PANIC("Fatal: Error creating shared chat for `%.*s`!",
+        UWU_PANIC("Fatal: Error creating shared chat for `%.*s`!\n",
                   combined.length, combined.data);
         return;
       }
@@ -368,6 +370,11 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         if (current->is_sentinel) {
           continue;
         }
+
+        fprintf(stderr, "Info: Sending welcome of `%.*s` to `%.*s`\n",
+                (int)source_username.length, source_username.data,
+                (int)current->data.username.length,
+                current->data.username.data);
 
         mg_ws_send(current->data.conn, msg.data, msg.length,
                    WEBSOCKET_OP_BINARY);

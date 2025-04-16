@@ -31,9 +31,12 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Usage: nob [-compiler options]\n"
                     "Compiler options:\n"
                     "  -v: Compiler with verbosity enabled.\n"
+                    "  -c: Compile the terminal client binary.\n"
+                    "  -p: Compile for production.\n"
                     "  -h: Display help menu.\n");
     return 1;
   }
+  Cmd cmd = {0};
 
   bool compile_with_verbosity = false;
   if (args_contains(argc, argv, "-v", 2)) {
@@ -41,19 +44,50 @@ int main(int argc, char **argv) {
     compile_with_verbosity = true;
   }
 
-  Cmd cmd = {0};
+  bool compile_for_production = false;
+  if (args_contains(argc, argv, "-p", 2)) {
+    nob_log(NOB_WARNING, "Will compile for production!");
+    compile_for_production = true;
+  }
+
+  bool compile_terminal_client = false;
+  if (args_contains(argc, argv, "-c", 2)) {
+    nob_log(NOB_WARNING, "Compiling terminal client!");
+    compile_terminal_client = true;
+  }
 
   if (!mkdir_if_not_exists(BUILD_FOLDER))
     return 1;
 
-  String_Builder sb = {0};
-  const char *compiler = "clang ";
-  if (compile_with_verbosity) {
-    compiler = "clang -v ";
+  if (compile_terminal_client) {
+    String_Builder sb = {0};
+    const char *compiler = "clang ";
+    if (compile_with_verbosity) {
+      compiler = "clang -v ";
+    }
+
+    sb_append_cstr(&sb, compiler);
+    sb_append_cstr(&sb, "-Wall -fuse-ld=lld ");
+    sb_append_cstr(&sb, "-o build/client " SRC_FOLDER "cli_client.c");
+
+    nob_cmd_append(&cmd, "bash", "-c", sb.items);
+    if (!nob_cmd_run_sync_and_reset(&cmd))
+      return 1;
+    return 0;
   }
 
-  sb_append_cstr(&sb, compiler);
-  sb_append_cstr(&sb, "-Wall -Werror -fuse-ld=lld ");
+  String_Builder sb = {0};
+  sb_append_cstr(&sb, "clang ");
+  if (compile_with_verbosity) {
+    sb_append_cstr(&sb, "-v ");
+  }
+  if (!compile_for_production) {
+    sb_append_cstr(&sb, "-g -O0 ");
+  } else {
+    sb_append_cstr(&sb, "-Werror ");
+  }
+
+  sb_append_cstr(&sb, "-Wall -fuse-ld=lld ");
   sb_append_cstr(&sb, "-o build/main " SRC_FOLDER "main.c");
 
   nob_cmd_append(&cmd, "bash", "-c", sb.items);
