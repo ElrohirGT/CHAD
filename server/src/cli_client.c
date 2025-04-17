@@ -3,6 +3,7 @@
 #include "time.h"
 #include <pthread.h>
 #include <stdio.h>
+#include <string.h>
 
 int SHOULD_FINISH = 1 | (1 << 1);
 int current = 0;
@@ -28,7 +29,15 @@ static void fnFlavio(struct mg_connection *c, int ev, void *ev_data) {
   } else if (ev == MG_EV_WS_OPEN) {
     // When websocket handshake is successful, send message
     // mg_ws_send(c, "hello", 5, WEBSOCKET_OP_TEXT);
-    MG_INFO(("Info: Flavio connected!"));
+    MG_INFO(("Info: Flavio connected! Sending message to Jose"));
+
+    // char buff[] = {4, 4, 'J', 'o', 's', 'e', 4, 'H', 'o', 'l', 'a', '\0'};
+    // size_t buff_len = strlen(buff); // Removes terminal char
+
+    char buff[] = {4, 4, 'J', 'o', 's', 'e', 0, '\0'};
+    size_t buff_len = strlen(buff); // Removes terminal char
+
+    mg_ws_send(c, buff, buff_len, WEBSOCKET_OP_BINARY);
   } else if (ev == MG_EV_WS_MSG) {
     // When we get echo response, print it
     struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;

@@ -642,13 +642,8 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         return;
       }
 
-      UWU_String general_chat_name = {.data = "~", .length = 1};
-
       char username_length = msg_data[1];
       char message_length = msg_data[2 + username_length];
-
-      // printf("Len: %s\n", msg.len);
-      // printf("Size: %s\n", 3 + username_length);
 
       // Message is empty
       if (message_length <= 0) {
@@ -667,7 +662,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       UWU_String content = {.data = &msg_data[3 + username_length],
                             .length = message_length};
 
-      if (UWU_String_equal(&msg_username, &general_chat_name)) {
+      if (UWU_String_equal(&msg_username, &GROUP_CHAT_CHANNEL)) {
         fprintf(stderr, "Info: Sending message to general chat...\n");
         UWU_ChatEntry entry = {.content = content,
                                .origin_username = GROUP_CHAT_CHANNEL};
@@ -721,9 +716,6 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
           first = &msg_username;
           other = &conn_info->username;
         }
-
-        printf("Username: %s\n", first->data);
-        printf("Receptor Username: %s\n", other->data);
 
         UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
         UWU_String combined = UWU_String_combineWithOther(&tmp, other);
