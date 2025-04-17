@@ -784,7 +784,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
             }
 
             UWU_String response = {.data = data, .length = data_length};
-            send_msg(c, &response);
+            send_msg(current->data.conn, &response);
           }
         }
       }
