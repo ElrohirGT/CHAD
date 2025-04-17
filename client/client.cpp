@@ -31,6 +31,43 @@
 #include <vector>
 
 // ***********************************************
+// UTILS
+// ***********************************************
+
+// Copy the data from a mongoose msg and returns it.
+// The user is responsable of freeing the data.
+UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
+  UWU_String str = {};
+
+  str.data = (char *)malloc(src->len);
+
+  if (src->buf == NULL) {
+    err = MALLOC_FAILED;
+    return str;
+  }
+
+  memcpy(str.data, src->buf, src->len);
+  str.length = src->len;
+
+  return str;
+}
+void print_mg_addr(struct mg_addr *addr) {
+  if (addr->is_ip6) {
+    printf("IPv6: ");
+    for (int i = 0; i < 16; i += 2) {
+      printf("%02x%02x", addr->ip[i], addr->ip[i + 1]);
+      if (i < 14)
+        printf(":");
+    }
+  } else {
+    printf("IPv4: %u.%u.%u.%u", addr->ip[0], addr->ip[1], addr->ip[2],
+           addr->ip[3]);
+  }
+
+  printf(" Port: %u\n", ntohs(addr->port));
+}
+
+// ***********************************************
 // CONSTANTS
 // ***********************************************
 static const size_t MAX_MESSAGES_PER_CHAT = 100;
@@ -75,14 +112,13 @@ void deinit_ClientState(UWU_Err *err) {}
 class MessageTask : public QObject, public QRunnable {
   Q_OBJECT
 public:
-  MessageTask(void *ev_data) : data(ev_data) {}
+  MessageTask(UWU_String s) : msg(s) {}
 
   void run() override {
-    printf("HANDLING MESSAGE...");
-    struct mg_ws_message *wm = (struct mg_ws_message *)data;
-    printf("GOT ECHO REPLY: [%.*s]\n", (int)wm->data.len, wm->data.buf);
+    printf("HANDLING MESSAGE...\n");
+    printf("GOT ECHO REPLY: [%.*s]\n", (int)msg.length, msg.data);
 
-    switch (wm->data.buf[0]) {
+    switch (msg.data[0]) {
     case ERROR:
       /* code */
       break;
@@ -106,12 +142,13 @@ public:
       fprintf(stderr, "Error: Unrecognized message from server!\n");
       break;
     }
+    UWU_String_freeWithMalloc(&msg);
 
     emit msgPrococessed();
   }
 
 private:
-  void *data;
+  UWU_String msg;
 
 signals:
   void msgPrococessed();
@@ -124,14 +161,12 @@ class Controller : public QObject {
 
 public slots:
 
-  // Holds all logic related to receiving messages from the server.
-  // Print websocket response and signal that we're done
   static void ws_listener(struct mg_connection *c, int ev, void *ev_data) {
     Controller *controller = (Controller *)c->fn_data;
     if (ev == MG_EV_OPEN) {
       c->is_hexdumping = 1;
     } else if (ev == MG_EV_CONNECT && mg_url_is_ssl(s_url)) {
-      // struct mg_str ca = mg_file_read(&mg_fs_posix, s_ca_path);
+      // On connection established
       struct mg_tls_opts opts = {.name = mg_url_host(s_url)};
       mg_tls_init(c, &opts);
     } else if (ev == MG_EV_ERROR) {
@@ -141,21 +176,31 @@ public slots:
       // When websocket handshake is successful, send message
       printf("SENDING MESSAGE\n");
       mg_ws_send(c, "hello", 5, WEBSOCKET_OP_TEXT);
+      print_mg_addr(&c->loc);
     } else if (ev == MG_EV_WS_MSG) {
-      MessageTask *task = new MessageTask(ev_data);
+
+      struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
+      printf("GOT ECHO REPLY: [%.*s]\n", (int)wm->data.len, wm->data.buf);
+
+      UWU_Err err = NO_ERROR;
+      UWU_String msg = UWU_String_fromMongoose(&wm->data, err);
+
+      MessageTask *task = new MessageTask(msg);
+
       QObject::connect(task, &MessageTask::msgPrococessed, controller,
                        &Controller::onMsgProcessed, Qt::QueuedConnection);
       QThreadPool::globalInstance()->start(task);
     }
   }
 
-  // Entrypoint to start the controller client
+  // Starts the controller
   void run() {
     printf("Starting Websocket controller...");
 
-    mg_mgr_init(&mgr); // Initialise event manager
-    ws_conn =
-        mg_ws_connect(&mgr, s_url, ws_listener, this, NULL); // Create client
+    // Initialise event manager
+    mg_mgr_init(&mgr);
+    // Create client
+    ws_conn = mg_ws_connect(&mgr, s_url, ws_listener, this, NULL);
 
     // WS Event loop
     QTimer *pollTimer = new QTimer(this);
@@ -178,6 +223,9 @@ signals:
   void stateChanged();
   void finished();
 };
+
+// HANDLERS
+// ****************************
 
 // Fetch list of users
 void list_users_handler() {
@@ -271,7 +319,7 @@ public:
 protected:
   // In this function you can modify what happens when closing the chat
   void closeEvent(QCloseEvent *event) override {
-    printf("Hello World\n");
+    printf("Bye bye...\n");
     event->accept();
   }
 };
