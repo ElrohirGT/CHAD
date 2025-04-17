@@ -15,11 +15,13 @@
 #include <QObject>
 #include <QPainter>
 #include <QPushButton>
+#include <QRunnable>
 #include <QString>
 #include <QStringListModel>
 #include <QStyledItemDelegate>
 #include <QTextEdit>
 #include <QThread>
+#include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QVariant>
@@ -70,30 +72,49 @@ void deinit_ClientState(UWU_Err *err) {}
 // CONTROLLER
 // *******************************************
 
-class Worker : public QObject {
+class MessageTask : public QObject, public QRunnable {
   Q_OBJECT
-
 public:
-  Worker(QString message, QObject *parent = nullptr)
-      : QObject(parent), message(message) {}
+  MessageTask(void *ev_data) : data(ev_data) {}
 
-public slots:
-  void process() {
-    qDebug() << "Processing message:" << message;
+  void run() override {
+    printf("HANDLING MESSAGE...");
+    struct mg_ws_message *wm = (struct mg_ws_message *)data;
+    printf("GOT ECHO REPLY: [%.*s]\n", (int)wm->data.len, wm->data.buf);
 
-    // Simulate a state change (you can modify your state here)
-    emit stateChanged("State updated after processing");
+    switch (wm->data.buf[0]) {
+    case ERROR:
+      /* code */
+      break;
+    case LISTED_USERS:
+      /* code */
+      break;
+    case GOT_USER:
+      /* code */
+      break;
+    case REGISTERED_USER:
+      /* code */
+      break;
+    case CHANGED_STATUS:
+      /* code */
+      break;
+    case GOT_MESSAGE:
+      break;
+    case GOT_MESSAGES:
+      break;
+    default:
+      fprintf(stderr, "Error: Unrecognized message from server!\n");
+      break;
+    }
 
-    // Worker is done processing
-    emit finished();
+    emit msgPrococessed();
   }
 
-signals:
-  void stateChanged(QString newState); // Signal for state change
-  void finished();                     // Signal when worker is done processing
-
 private:
-  QString message;
+  void *data;
+
+signals:
+  void msgPrococessed();
 };
 
 class Controller : public QObject {
@@ -106,6 +127,7 @@ public slots:
   // Holds all logic related to receiving messages from the server.
   // Print websocket response and signal that we're done
   static void ws_listener(struct mg_connection *c, int ev, void *ev_data) {
+    Controller *controller = (Controller *)c->fn_data;
     if (ev == MG_EV_OPEN) {
       c->is_hexdumping = 1;
     } else if (ev == MG_EV_CONNECT && mg_url_is_ssl(s_url)) {
@@ -120,49 +142,20 @@ public slots:
       printf("SENDING MESSAGE\n");
       mg_ws_send(c, "hello", 5, WEBSOCKET_OP_TEXT);
     } else if (ev == MG_EV_WS_MSG) {
-      const char *msg = (const char *)ev_data;
-      qDebug() << "Received WebSocket message:" << msg;
-
-      struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
-      printf("GOT ECHO REPLY: [%.*s]\n", (int)wm->data.len, wm->data.buf);
-
-      // Create a worker to process the message
-      Worker *worker = new Worker(msg);
-
-      // Create a new thread for this worker
-      QThread *workerThread = new QThread();
-
-      // Move the worker to the new thread
-      worker->moveToThread(workerThread);
-
-      // Connect signals and slots
-      QObject::connect(workerThread, &QThread::started, worker,
-                       &Worker::process);
-      QObject::connect(worker, &Worker::finished, workerThread, &QThread::quit);
-      QObject::connect(worker, &Worker::finished, worker, &Worker::deleteLater);
-      QObject::connect(workerThread, &QThread::finished, workerThread,
-                       &QThread::deleteLater);
-
-      // Connect state change signal to update state (or UI)
-      QObject::connect(worker, &Worker::stateChanged,
-                       [](const QString &newState) {
-                         qDebug() << "State changed:" << newState;
-                         // Here, you can handle the state change, such as
-                         // updating UI
-                       });
-
-      // Start the worker thread
-      workerThread->start();
+      MessageTask *task = new MessageTask(ev_data);
+      QObject::connect(task, &MessageTask::msgPrococessed, controller,
+                       &Controller::onMsgProcessed, Qt::QueuedConnection);
+      QThreadPool::globalInstance()->start(task);
     }
   }
 
   // Entrypoint to start the controller client
   void run() {
-    qDebug() << "Worker is running in thread:" << QThread::currentThread();
+    printf("Starting Websocket controller...");
 
     mg_mgr_init(&mgr); // Initialise event manager
     ws_conn =
-        mg_ws_connect(&mgr, s_url, ws_listener, &done, NULL); // Create client
+        mg_ws_connect(&mgr, s_url, ws_listener, this, NULL); // Create client
 
     // WS Event loop
     QTimer *pollTimer = new QTimer(this);
@@ -176,7 +169,13 @@ public slots:
     mg_mgr_free(&mgr);
   }
 
+  void onMsgProcessed() {
+    printf("MSG PROCESSED...\n");
+    emit stateChanged();
+  }
+
 signals:
+  void stateChanged();
   void finished();
 };
 
