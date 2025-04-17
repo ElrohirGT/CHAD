@@ -46,4 +46,4 @@ With the project build now the executable is created in the build directory and 
 
 ## Multithreading
 
-[diagram](./diagrams/multithreading.png)
+![diagram](./diagrams/multithreading.png)
