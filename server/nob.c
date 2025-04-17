@@ -65,8 +65,14 @@ int main(int argc, char **argv) {
     if (compile_with_verbosity) {
       compiler = "clang -v ";
     }
-
     sb_append_cstr(&sb, compiler);
+
+    if (!compile_for_production) {
+      sb_append_cstr(&sb, "-g -O0 ");
+    } else {
+      sb_append_cstr(&sb, "-Werror ");
+    }
+
     sb_append_cstr(&sb, "-Wall -fuse-ld=lld ");
     sb_append_cstr(&sb, "-o build/client " SRC_FOLDER "cli_client.c");
 

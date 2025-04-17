@@ -6,6 +6,8 @@
 #include "../../lib/lib.c"
 #include "../deps/hashmap/hashmap.h"
 #include "../deps/mongoose/mongoose.c"
+#include "pthread.h"
+#include "time.h"
 #include <signal.h>
 #include <stdio.h>
 
@@ -57,6 +59,9 @@ typedef struct {
   UWU_Arena req_arena;
   // Mongoose message manager.
   struct mg_mgr manager;
+  // The mutation mutex, every time you need to modify the global state you'll
+  // need to lock this mutex!
+  pthread_mutex_t mutex;
 } UWU_ServerState;
 
 static UWU_ServerState *UWU_STATE = NULL;
@@ -65,6 +70,8 @@ UWU_ServerState initialize_server_state(UWU_Err err) {
   UWU_ServerState state = {};
 
   mg_mgr_init(&state.manager);
+
+  pthread_mutex_init(&state.mutex, NULL);
 
   state.active_users = UWU_UserList_init(err);
   if (err != NO_ERROR) {
@@ -107,19 +114,19 @@ UWU_ServerState initialize_server_state(UWU_Err err) {
 void deinitialize_server_state(UWU_ServerState *state) {
   state->is_shutting_off = TRUE;
 
-  fprintf(stderr, "Info: Deinitializing mongoose manager...\n");
+  MG_INFO(("Deinitializing mongoose manager..."));
   mg_mgr_free(&state->manager);
 
-  fprintf(stderr, "Info: Cleaning User List...\n");
+  MG_INFO(("Cleaning User List..."));
   UWU_UserList_deinit(&state->active_users);
 
-  fprintf(stderr, "Info: Cleaning group Chat history...\n");
+  MG_INFO(("Cleaning group Chat history..."));
   UWU_ChatHistory_deinit(&state->group_chat);
 
-  fprintf(stderr, "Info: Cleaning DM Chat histories...\n");
+  MG_INFO(("Cleaning DM Chat histories..."));
   hashmap_destroy(&state->chats);
 
-  fprintf(stderr, "Info: Cleaning request arena...\n");
+  MG_INFO(("Cleaning request arena..."));
   UWU_Arena_deinit(state->req_arena);
 }
 
@@ -156,19 +163,31 @@ int remove_if_matches(void *context, struct hashmap_element_s *const e) {
 void update_last_action(UWU_User *info) {
   info->last_action = time(NULL);
   if ((time_t)-1 == info->last_action) {
-    UWU_PANIC("Fatal: Failed to obtain current time!");
+    UWU_PANIC("Fatal: Failed to obtain current time!\n");
     return;
   }
 }
 
+// Send a message to a specific connection.
+void send_msg(struct mg_connection *conn, const UWU_String *const msg) {
+  UWU_print_msg(msg, "Debug: Server", "Sends");
+  size_t sent_count =
+      mg_ws_send(conn, msg->data, msg->length, WEBSOCKET_OP_BINARY);
+  if (sent_count < msg->length) {
+    UWU_PANIC("Fatal: Couln't send the complete message! %d != %d.\n",
+              sent_count, msg->length);
+  }
+}
+
 // Broadcasts an msg to all available connections!
-void broadcast_msg(struct mg_mgr *mgr, UWU_String *msg) {
-  for (struct mg_connection *wc = mgr->conns; wc != NULL; wc = wc->next) {
-    size_t sent_count =
-        mg_ws_send(wc, msg->data, msg->length, WEBSOCKET_OP_BINARY);
-    if (sent_count != msg->length) {
-      UWU_PANIC("Fatal: Couln't send the complete message!");
+void broadcast_msg(UWU_String *msg) {
+  for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+       current != NULL; current = current->next) {
+    if (current->is_sentinel) {
+      continue;
     }
+
+    send_msg(current->data.conn, msg);
   }
 }
 
@@ -178,7 +197,7 @@ UWU_String create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
   char *data = UWU_Arena_alloc(arena, sizeof(char) * data_length, err);
 
   if (err != NO_ERROR) {
-    UWU_PANIC("Fatal: Failed to allocate space for message `changed_status`");
+    UWU_PANIC("Fatal: Failed to allocate space for message `changed_status`\n");
     UWU_String dummy = {};
     return dummy;
   }
@@ -208,11 +227,11 @@ IDLE Detector
 //   }
 //
 //   // UWU_UserList *active_usernames = (UWU_UserList *)p;
-//   // fprintf(stderr, "Info: active_usernames received in: %p\n",
+//   // fprintf(stderr, "Info: active_usernames received in: %p",
 //   //         (void *)&UWU_STATE->active_usernames);
 //   UWU_UserList usernames = UWU_STATE->active_usernames;
 //   while (!UWU_STATE->is_shutting_off) {
-//     fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
+//     fprintf(stderr, "Info: Checking to IDLE %zu active users...",
 //             usernames.length);
 //     time_t now = time(NULL);
 //
@@ -232,7 +251,7 @@ IDLE Detector
 //       UWU_ConnStatus status = current->data.status;
 //       if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
 //         UWU_Arena_reset(&arena);
-//         fprintf(stderr, "Info: Updating %.*s as INACTIVE!\n",
+//         fprintf(stderr, "Info: Updating %.*s as INACTIVE!",
 //                 current->data.username.length, current->data.username.data);
 //         current->data.status = INACTIVE;
 //         UWU_String msg = create_changed_status_message(&arena,
@@ -287,8 +306,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     struct mg_http_message *hm = (struct mg_http_message *)ev_data;
     // We treat all requests as attempting to connect to the server...
     if (hm->query.len < 6) {
-      fprintf(stderr,
-              "Error: Query must contain at least a `name` parameter!\n");
+      MG_ERROR(("Query must contain at least a `name` parameter!"));
       mg_http_reply(c, 400, "", "INVALID USERNAME QUERY FORMAT");
       return;
     }
@@ -304,17 +322,17 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     };
 
     if (!UWU_String_equal(&EXPECTED_QUERY_START, &query_start)) {
-      fprintf(stderr, "Error: Invalid query format!\n");
+      MG_ERROR(("Invalid query format!"));
       mg_http_reply(c, 400, "", "INVALID USERNAME QUERY FORMAT");
       return;
     }
     if (hm->query.len - variable_name_length <= 0) {
-      fprintf(stderr, "Error: Username is too short!\n");
+      MG_ERROR(("Username is too short!"));
       mg_http_reply(c, 400, "", "USERNAME CANT BE EMPTY");
       return;
     }
     if (hm->query.len - variable_name_length > 255) {
-      fprintf(stderr, "Error: Username is too large!\n");
+      MG_ERROR(("Username is too large!"));
       mg_http_reply(c, 400, "", "USERNAME TOO LARGE");
       return;
     }
@@ -325,8 +343,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     };
 
     if (UWU_String_equal(&GROUP_CHAT_CHANNEL, &source_username)) {
-      fprintf(stderr,
-              "Error: Can't connect with the same name as the group chat!\n");
+      MG_ERROR(("Can't connect with the same name as the group chat!"));
       mg_http_reply(c, 400, "", "INVALID USERNAME");
       return;
     }
@@ -335,7 +352,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       UWU_User *user =
           UWU_UserList_findByName(&UWU_STATE->active_users, &source_username);
       if (user != NULL) {
-        fprintf(stderr, "Error: Can't connect to an already used username!\n");
+        MG_ERROR(("Can't connect to an already used username!"));
         mg_http_reply(c, 400, "", "INVALID USERNAME");
         return;
       }
@@ -352,8 +369,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
                 source_username.length, source_username.data);
       return;
     }
-    fprintf(stderr, "Info: Currently %zu active users!\n",
-            UWU_STATE->active_users.length);
+    MG_INFO(("Currently %zu active users!", UWU_STATE->active_users.length));
 
     for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
          current != NULL; current = current->next) {
@@ -394,32 +410,43 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
            current != NULL; current = current->next) {
 
-        if (current->is_sentinel) {
+        if (current->is_sentinel ||
+            UWU_String_equal(&current->data.username, &user.username)) {
           continue;
         }
 
-        fprintf(stderr, "Info: Sending welcome of `%.*s` to `%.*s`\n",
-                (int)source_username.length, source_username.data,
-                (int)current->data.username.length,
-                current->data.username.data);
+        MG_INFO(("Sending welcome of `%.*s` to `%.*s`",
+                 (int)source_username.length, source_username.data,
+                 (int)current->data.username.length,
+                 current->data.username.data));
 
-        mg_ws_send(current->data.conn, msg.data, msg.length,
-                   WEBSOCKET_OP_BINARY);
+        send_msg(current->data.conn, &msg);
       }
     }
 
-    UWU_String *copy = malloc(sizeof(UWU_String));
-    if (copy == NULL) {
-      fprintf(stderr, "Error: Can't allocate enough memory to save username!");
-      mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
-      return;
+    c->fn_data = malloc(sizeof(UWU_String));
+    {
+      if (c->fn_data == NULL) {
+        MG_ERROR(("Error: Can't allocate enough memory to save username!"));
+        mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
+        return;
+      }
+
+      UWU_String inner_copy = UWU_String_copy(&source_username, err);
+      if (err != NO_ERROR) {
+        MG_ERROR(("Error: Can't allocate enough memory to copy username!"));
+        mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
+        return;
+      }
+
+      ((UWU_String *)c->fn_data)->length = inner_copy.length;
+      ((UWU_String *)c->fn_data)->data = inner_copy.data;
     }
-    *copy = UWU_String_copy(&source_username, err);
-    c->fn_data = copy;
+    c->data[0] = 10;
 
     mg_ws_upgrade(c, hm, NULL);
     // Serve REST response
-    // mg_http_reply(c, 200, "", "{\"result\": %d}\n", 123);
+    // mg_http_reply(c, 200, "", "{\"result\": %d}", 123);
   } else if (ev == MG_EV_WS_MSG) {
     // Got websocket frame. Received data is wm->data. Echo it back!
     struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
@@ -427,26 +454,45 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
 
     // Connection closed!
   } else if (ev == MG_EV_CLOSE) {
+    UWU_String *conn_data = c->fn_data;
+    // This may be null when we free the manager!
+    if (conn_data == NULL) {
+      return;
+    }
 
-    UWU_String *username = c->fn_data;
-    UWU_User user = {.username = *username, .status = DISCONNETED};
+    UWU_String username = {
+        .data = conn_data->data,
+        .length = conn_data->length,
+    };
+    UWU_User user = {.username = username, .status = DISCONNETED};
 
-    UWU_UserList_removeByUsernameIfExists(&UWU_STATE->active_users, username);
-    hashmap_iterate_pairs(&UWU_STATE->chats, remove_if_matches, username);
+    MG_INFO(("Disconnecting %.*s", (int)conn_data->length, conn_data->data));
+
+    UWU_UserList_removeByUsernameIfExists(&UWU_STATE->active_users, conn_data);
+    hashmap_iterate_pairs(&UWU_STATE->chats, remove_if_matches, conn_data);
 
     int max_length = 3 + 255;
     char buff[max_length];
     UWU_String msg = changed_status_builder(buff, &user);
-    broadcast_msg(&UWU_STATE->manager, &msg);
+    MG_INFO(("Broadcasting %.*s disconnection ", (int)conn_data->length,
+             conn_data->data));
+    broadcast_msg(&msg);
 
-    UWU_String_freeWithMalloc(c->fn_data);
-    free(c->fn_data);
+    UWU_String_freeWithMalloc(conn_data);
+    free(conn_data);
   }
 }
 
 void shutdown_server(int signal) {
-  fprintf(stderr, "Info: Shutting down server...\n");
+  MG_INFO(("Shutting down server..."));
   UWU_STATE->is_shutting_off = TRUE;
+}
+
+void *shutdown_with_time(void *a) {
+  const struct timespec wait_time = {.tv_sec = 5, .tv_nsec = 0};
+  nanosleep(&wait_time, NULL);
+  // shutdown_server(0);
+  return NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -455,6 +501,9 @@ int main(int argc, char *argv[]) {
   action.sa_handler = shutdown_server;
   sigaction(SIGINT, &action, NULL);
   sigaction(SIGTERM, &action, NULL);
+
+  pthread_t id;
+  pthread_create(&id, NULL, shutdown_with_time, NULL);
 
   // Parse command-line flags
   for (int i = 1; i < argc; i++) {
@@ -490,6 +539,17 @@ int main(int argc, char *argv[]) {
   mg_http_listen(&state.manager, s_listen_on, fn, NULL); // Create HTTP listener
   for (; !UWU_STATE->is_shutting_off;)
     mg_mgr_poll(&state.manager, 1000); // Infinite event loop
+
+  pthread_join(id, NULL);
+
+  for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+       current != NULL; current = current->next) {
+    if (current->is_sentinel) {
+      continue;
+    }
+    mg_close_conn(current->data.conn);
+  }
+
   deinitialize_server_state(UWU_STATE);
   return 0;
 }

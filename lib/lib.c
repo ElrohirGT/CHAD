@@ -178,6 +178,18 @@ typedef struct {
   size_t length;
 } UWU_String;
 
+void UWU_print_msg(const UWU_String *const msg, const char *const prefix,
+                   const char *const action) {
+  fprintf(stderr, "%s %s: [ ", prefix, action);
+  for (int i = 0; i < msg->length; i++) {
+    fprintf(stderr, "%c (%d)", msg->data[i], msg->data[i]);
+    if (i + 1 < msg->length) {
+      fprintf(stderr, ", ");
+    }
+  }
+  fprintf(stderr, " ]\n");
+}
+
 UWU_Bool UWU_String_startsWith(const UWU_String *const str,
                                const UWU_String *const prefix) {
   if (str->length < prefix->length) {
