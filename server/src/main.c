@@ -54,9 +54,9 @@ typedef struct {
   // Flag to alert all threads that the server is shutting off.
   // ONLY THE MAIN thread should update this value!
   UWU_Bool is_shutting_off;
-  // Arena that holds the maximum amount of data a request can have.
+  // The maximum amount of data a request can have.
   // This allows us to manage requests without having to allocate new memory.
-  UWU_Arena req_arena;
+  size_t req_arena_max_size;
   // Mongoose message manager.
   struct mg_mgr manager;
   // The mutation mutex, every time you need to modify the global state you'll
@@ -100,11 +100,7 @@ UWU_ServerState initialize_server_state(UWU_Err err) {
   /* clang-format off */
   /* | type (1 byte)  | num msgs (1 byte) | length user (1 byte) | username (max 255 bytes) | length msg (1 bye) | msg (max 255 bytes) |*/
   /* clang-format on */
-  size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
-  state.req_arena = UWU_Arena_init(max_msg_size, err);
-  if (err != NO_ERROR) {
-    return state;
-  }
+  state.req_arena_max_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
 
   // TODO: Initialize other server state...
 
@@ -125,9 +121,29 @@ void deinitialize_server_state(UWU_ServerState *state) {
 
   MG_INFO(("Cleaning DM Chat histories..."));
   hashmap_destroy(&state->chats);
+}
 
-  MG_INFO(("Cleaning request arena..."));
-  UWU_Arena_deinit(state->req_arena);
+// Information associated with a specific connection.
+typedef struct {
+  UWU_String username;
+  UWU_Arena req_arena;
+} UWU_WSConnInfo;
+
+// Creates a WSConnInfo copying the username.
+void UWU_WSConnInfo_init(UWU_WSConnInfo *info, UWU_String *username,
+                         UWU_Arena req_arena, UWU_Err err) {
+  UWU_String copy = UWU_String_copy(username, err);
+  if (err != NO_ERROR) {
+    return;
+  }
+  info->username = copy;
+  info->req_arena = req_arena;
+}
+
+// Frees the username and deinits the arena.
+void UWU_WSConnInfo_deinit(UWU_WSConnInfo *info) {
+  UWU_String_freeWithMalloc(&info->username);
+  UWU_Arena_deinit(info->req_arena);
 }
 
 /* *****************************************************************************
@@ -191,6 +207,29 @@ void broadcast_msg(UWU_String *msg) {
   }
 }
 
+UWU_String changed_status_builder(char *buff, UWU_User *info) {
+  UWU_String def = {};
+  size_t msg_length = 0;
+
+  buff[msg_length] = CHANGED_STATUS;
+  msg_length++;
+
+  buff[msg_length] = info->username.length;
+  msg_length++;
+
+  for (int i = 0; i < info->username.length; i++) {
+    buff[msg_length] = UWU_String_getChar(&info->username, i);
+    msg_length++;
+  }
+
+  buff[msg_length] = info->status;
+  msg_length++;
+
+  def.data = buff;
+  def.length = msg_length;
+  return def;
+}
+
 UWU_String create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
   UWU_Err err = NO_ERROR;
   int data_length = 2 + info->username.length + 1;
@@ -202,17 +241,19 @@ UWU_String create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
     return dummy;
   }
 
-  data[0] = CHANGED_STATUS;
-  data[1] = info->username.length;
-  for (int i = 0; i < info->username.length; i++) {
-    UWU_String u = info->username;
-    data[2 + i] = UWU_String_charAt(&u, i);
-  }
-  // memcpy(&data[2], &info->username.data, info->username.length);
-  data[data_length - 1] = info->status;
+  return changed_status_builder(data, info);
 
-  UWU_String msg = {.length = data_length, .data = data};
-  return msg;
+  // data[0] = CHANGED_STATUS;
+  // data[1] = info->username.length;
+  // for (int i = 0; i < info->username.length; i++) {
+  //   UWU_String u = info->username;
+  //   data[2 + i] = UWU_String_charAt(&u, i);
+  // }
+  // // memcpy(&data[2], &info->username.data, info->username.length);
+  // data[data_length - 1] = info->status;
+  //
+  // UWU_String msg = {.length = data_length, .data = data};
+  // return msg;
 }
 
 /* *****************************************************************************
@@ -265,29 +306,6 @@ IDLE Detector
 //   UWU_Arena_deinit(arena);
 //   return NULL;
 // }
-
-UWU_String changed_status_builder(char *buff, UWU_User *info) {
-  UWU_String def = {};
-  size_t msg_length = 0;
-
-  buff[msg_length] = CHANGED_STATUS;
-  msg_length++;
-
-  buff[msg_length] = info->username.length;
-  msg_length++;
-
-  for (int i = 0; i < info->username.length; i++) {
-    buff[msg_length] = UWU_String_getChar(&info->username, i);
-    msg_length++;
-  }
-
-  buff[msg_length] = info->status;
-  msg_length++;
-
-  def.data = buff;
-  def.length = msg_length;
-  return def;
-}
 
 // This RESTful server implements the following endpoints:
 //   /websocket - upgrade to Websocket, and implement websocket echo server
@@ -424,7 +442,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       }
     }
 
-    c->fn_data = malloc(sizeof(UWU_String));
+    c->fn_data = malloc(sizeof(UWU_WSConnInfo));
     {
       if (c->fn_data == NULL) {
         MG_ERROR(("Error: Can't allocate enough memory to save username!"));
@@ -432,54 +450,500 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         return;
       }
 
-      UWU_String inner_copy = UWU_String_copy(&source_username, err);
+      UWU_Arena arena = UWU_Arena_init(UWU_STATE->req_arena_max_size, err);
       if (err != NO_ERROR) {
         MG_ERROR(("Error: Can't allocate enough memory to copy username!"));
         mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
         return;
       }
 
-      ((UWU_String *)c->fn_data)->length = inner_copy.length;
-      ((UWU_String *)c->fn_data)->data = inner_copy.data;
+      UWU_WSConnInfo_init(c->fn_data, &source_username, arena, err);
+      if (err != NO_ERROR) {
+        MG_ERROR(("Error: Can't allocate enough memory to copy username!"));
+        mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
+        return;
+      }
     }
-    c->data[0] = 10;
+    // c->data[0] = 10;
 
     mg_ws_upgrade(c, hm, NULL);
     // Serve REST response
     // mg_http_reply(c, 200, "", "{\"result\": %d}", 123);
   } else if (ev == MG_EV_WS_MSG) {
     // Got websocket frame. Received data is wm->data. Echo it back!
-    struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
-    mg_ws_send(c, wm->data.buf, wm->data.len, WEBSOCKET_OP_TEXT);
+    // mg_ws_send(c, wm->data.buf, wm->data.len, WEBSOCKET_OP_TEXT);
 
-    // Connection closed!
-  } else if (ev == MG_EV_CLOSE) {
-    UWU_String *conn_data = c->fn_data;
-    // This may be null when we free the manager!
-    if (conn_data == NULL) {
+    struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
+    char *msg_data = wm->data.buf;
+    size_t msg_len = wm->data.len;
+
+    UWU_WSConnInfo *conn_info = c->fn_data;
+    UWU_Arena_reset(&conn_info->req_arena);
+    UWU_Err err = NO_ERROR;
+
+    if (wm->data.len <= 0) {
+      MG_ERROR(("Error: Message is too short!"));
       return;
     }
 
-    UWU_String username = {
-        .data = conn_data->data,
-        .length = conn_data->length,
-    };
-    UWU_User user = {.username = username, .status = DISCONNETED};
+    switch (msg_data[0]) {
+    case GET_USER: {
+      if (msg_len < 3) {
+        MG_ERROR(("Error: Message is too short!"));
+        return;
+      }
 
-    MG_INFO(("Disconnecting %.*s", (int)conn_data->length, conn_data->data));
+      char username_length = msg_data[1];
 
-    UWU_UserList_removeByUsernameIfExists(&UWU_STATE->active_users, conn_data);
-    hashmap_iterate_pairs(&UWU_STATE->chats, remove_if_matches, conn_data);
+      UWU_String user_to_get = {.data = &msg_data[2],
+                                .length = username_length};
+
+      UWU_User *user =
+          UWU_UserList_findByName(&UWU_STATE->active_users, &user_to_get);
+
+      if (user == NULL) {
+        MG_ERROR(("Error: User not found!"));
+        return;
+      }
+
+      printf("Username: %.*s\n", (int)user->username.length,
+             user->username.data);
+      printf("Status: %d\n", user->status);
+
+      size_t response_size = user->username.length + 2;
+
+      char *data = UWU_Arena_alloc(&conn_info->req_arena, response_size, err);
+      if (err != NO_ERROR) {
+        MG_ERROR(("Error: Memory allocation failed!"));
+        return;
+      }
+
+      data[0] = GOT_USER;
+      memcpy(data + 1, user->username.data, user->username.length);
+      data[user->username.length + 1] = (char)user->status;
+
+      UWU_String response = {.data = data, .length = response_size};
+      send_msg(c, &response);
+    } break;
+    case LIST_USERS: {
+      char *data =
+          UWU_Arena_alloc(&conn_info->req_arena,
+                          2 + (255 + 1) * UWU_STATE->active_users.length, err);
+      if (err != NO_ERROR) {
+        UWU_PANIC("Fatal: Allocation of memory for response failed!");
+        return;
+      }
+
+      data[0] = LISTED_USERS;
+      data[1] = UWU_STATE->active_users.length;
+
+      size_t data_length = 2;
+      for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+           current != NULL; current = current->next) {
+
+        if (current->is_sentinel) {
+          continue;
+        }
+
+        if (UWU_String_equal(&conn_info->username, &current->data.username)) {
+          update_last_action(&current->data);
+        }
+
+        size_t username_length = current->data.username.length;
+        data[data_length] = username_length;
+        data_length++;
+
+        memcpy(&data[data_length], current->data.username.data,
+               username_length);
+        data_length += username_length;
+
+        data[data_length] = current->data.status;
+        data_length++;
+      }
+
+      UWU_String response = {.data = data, .length = data_length};
+      send_msg(c, &response);
+    } break;
+    case CHANGE_STATUS: {
+      // Message should contain at least a username length
+      if (msg_len < 2) {
+        fprintf(stderr, "Error: Message is too short!\n");
+        return;
+      }
+      char username_length = msg_data[1];
+      if (username_length <= 0) {
+        fprintf(stderr, "Error: The username is too short!\n");
+        return;
+      }
+
+      UWU_String req_username = {
+          .data = &msg_data[2],
+          .length = username_length,
+      };
+
+      if (!UWU_String_equal(&req_username, &conn_info->username)) {
+        fprintf(stderr,
+                "Error: Another username can't change the status of the "
+                "current username!\n");
+        return;
+      }
+
+      UWU_User *old_user =
+          UWU_UserList_findByName(&UWU_STATE->active_users, &req_username);
+      if (NULL == old_user) {
+        UWU_PANIC("Fatal: No active user with the given username found!");
+        return;
+      }
+
+      UWU_User new_user = {
+          .username = req_username,
+          .status = msg_data[2 + username_length],
+      };
+
+      if (old_user->status == new_user.status) {
+        fprintf(stderr, "Warning: Can't change status to the same status!\n");
+        return;
+      }
+
+      UWU_Bool transition_matrix[4][4] = {};
+      transition_matrix[DISCONNETED][DISCONNETED] = TRUE;
+
+      transition_matrix[ACTIVE][BUSY] = TRUE;
+      transition_matrix[BUSY][ACTIVE] = TRUE;
+
+      transition_matrix[INACTIVE][ACTIVE] = TRUE;
+      transition_matrix[INACTIVE][BUSY] = TRUE;
+
+      UWU_Bool valid_transition =
+          transition_matrix[old_user->status][new_user.status];
+      if (!valid_transition) {
+        fprintf(stderr, "Error: Invalid transition of user state!\n");
+        char err_data[] = {(char)ERROR, (char)INVALID_STATUS};
+
+        UWU_String err_response = {.data = err_data, .length = 2};
+        send_msg(c, &err_response);
+        return;
+      }
+      fprintf(stderr, "Info: Changing status %.*s to %d",
+              (int)new_user.username.length, new_user.username.data,
+              new_user.status);
+
+      old_user->status = new_user.status;
+      old_user->username = req_username;
+      update_last_action(old_user);
+
+      UWU_String response =
+          create_changed_status_message(&conn_info->req_arena, &new_user);
+      broadcast_msg(&response);
+    } break;
+    case SEND_MESSAGE: {
+      if (msg_len < 2) {
+        fprintf(stderr, "Error: Message is too short!\n");
+        return;
+      }
+
+      UWU_String general_chat_name = {.data = "~", .length = 1};
+
+      char username_length = msg_data[1];
+      char message_length = msg_data[2 + username_length];
+
+      // printf("Len: %s\n", msg.len);
+      // printf("Size: %s\n", 3 + username_length);
+
+      // Message is empty
+      if (message_length <= 0) {
+        char error[2];
+        error[0] = ERROR;
+        error[1] = EMPTY_MESSAGE;
+
+        UWU_String response = {.data = error, .length = 2};
+        send_msg(c, &response);
+        return;
+      }
+
+      UWU_String msg_username = {.data = &msg_data[2],
+                                 .length = username_length};
+
+      UWU_String content = {.data = &msg_data[3 + username_length],
+                            .length = message_length};
+
+      if (UWU_String_equal(&msg_username, &general_chat_name)) {
+        fprintf(stderr, "Info: Sending message to general chat...\n");
+        UWU_ChatEntry entry = {.content = content,
+                               .origin_username = GROUP_CHAT_CHANNEL};
+        UWU_ChatHistory_addMessage(&UWU_STATE->group_chat, &entry);
+
+        size_t data_length = 3 + 1 + message_length;
+        char *data = UWU_Arena_alloc(&conn_info->req_arena, data_length, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC(
+              "Fatal: Failed to allocate memory for GOT_MESSAGE response!");
+          return;
+        }
+
+        data[0] = GOT_MESSAGE;
+        data[1] = 1;
+        data[2] = '~';
+        data[3] = message_length;
+        for (size_t i = 0; i < message_length; i++) {
+          data[4 + i] = UWU_String_charAt(&content, i);
+        }
+
+        UWU_String response = {.data = data, .length = data_length};
+        broadcast_msg(&response);
+
+        for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+             current != NULL; current = current->next) {
+
+          if (current->is_sentinel) {
+            continue;
+          }
+          UWU_String current_username = current->data.username;
+
+          if (UWU_String_equal(&current_username, &conn_info->username)) {
+            update_last_action(&current->data);
+
+            if (current->data.status == INACTIVE) {
+              current->data.status = ACTIVE;
+              UWU_String response = create_changed_status_message(
+                  &conn_info->req_arena, &current->data);
+              broadcast_msg(&response);
+            }
+          }
+        }
+
+      } else {
+
+        UWU_String *first = &conn_info->username;
+        UWU_String *other = &msg_username;
+
+        if (!UWU_String_firstGoesFirst(first, other)) {
+          first = &msg_username;
+          other = &conn_info->username;
+        }
+
+        printf("Username: %s\n", first->data);
+        printf("Receptor Username: %s\n", other->data);
+
+        UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+        UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+        UWU_String_freeWithMalloc(&tmp);
+
+        UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(
+            &UWU_STATE->chats, combined.data, combined.length);
+
+        if (history == NULL) {
+          UWU_PANIC("Fatal: No chat history found for key: %.*s",
+                    combined.length, combined.data);
+          return;
+        }
+
+        // UWU_String origin_user = {.data = conn_username->data,
+        //                           .length = conn_username->length};
+
+        UWU_ChatEntry entry = {.content = content,
+                               .origin_username = conn_info->username};
+
+        UWU_ChatHistory_addMessage(history, &entry);
+
+        size_t data_length = 4 + conn_info->username.length + message_length;
+        char *data = UWU_Arena_alloc(&conn_info->req_arena, data_length, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC(
+              "Fatal: Failed to allocate memory for GOT_MESSAGE response!");
+          return;
+        }
+
+        data[0] = GOT_MESSAGE;
+        data[1] = conn_info->username.length;
+
+        for (size_t i = 0; i < conn_info->username.length; i++) {
+          data[2 + i] = UWU_String_charAt(&conn_info->username, i);
+        }
+
+        data[2 + conn_info->username.length] = message_length;
+        for (size_t i = 0; i < message_length; i++) {
+          data[2 + conn_info->username.length + 1 + i] =
+              UWU_String_charAt(&content, i);
+        }
+
+        // channel = combinación de conn_username y el req_username
+        for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+             current != NULL; current = current->next) {
+
+          if (current->is_sentinel) {
+            continue;
+          }
+
+          UWU_String current_username = current->data.username;
+
+          if (UWU_String_equal(&current_username, &conn_info->username)) {
+            update_last_action(&current->data);
+          }
+
+          if (UWU_String_equal(&current_username, &conn_info->username) ||
+              UWU_String_equal(&current_username, &msg_username)) {
+
+            if (current->data.status == INACTIVE) {
+              current->data.status = ACTIVE;
+              UWU_String response = create_changed_status_message(
+                  &conn_info->req_arena, &current->data);
+              broadcast_msg(&response);
+            }
+
+            UWU_String response = {.data = data, .length = data_length};
+            send_msg(c, &response);
+          }
+        }
+      }
+    } break;
+
+    case GET_MESSAGES: {
+      if (msg_len < 2) {
+        fprintf(stderr, "Error: Message is too short!\n");
+        return;
+      }
+
+      char username_length = msg_data[1];
+      if (username_length <= 0) {
+        fprintf(stderr, "Error: The username is too short!\n");
+        return;
+      }
+
+      UWU_String req_username = {
+          .data = &msg_data[2],
+          .length = username_length,
+      };
+
+      if (UWU_String_equal(&req_username, &GROUP_CHAT_CHANNEL)) {
+        size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+        char *data = UWU_Arena_alloc(&conn_info->req_arena, max_msg_size, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC(
+              "Fatal: Arena couldn't allocate enough memory for message!");
+          return;
+        }
+
+        data[0] = GOT_MESSAGES;
+        data[1] = UWU_STATE->group_chat.count;
+        size_t data_length = 2;
+
+        UWU_ChatHistory_Iterator iter =
+            UWU_ChatHistory_iter(&UWU_STATE->group_chat);
+        for (size_t i = iter.start; i < iter.end; i++) {
+          UWU_ChatEntry entry = UWU_ChatHistory_get(
+              &UWU_STATE->group_chat, i % UWU_STATE->group_chat.capacity);
+
+          data[data_length] = entry.origin_username.length;
+          data_length++;
+
+          for (size_t j = 0; j < entry.origin_username.length; j++) {
+            data[data_length] = UWU_String_getChar(&entry.origin_username, j);
+            data_length++;
+          }
+
+          data[data_length] = entry.content.length;
+          data_length++;
+
+          for (size_t j = 0; j < entry.content.length; j++) {
+            data[data_length] = UWU_String_getChar(&entry.content, j);
+            data_length++;
+          }
+        }
+
+        UWU_String response = {.data = data, .length = data_length};
+        send_msg(c, &response);
+      } else {
+        UWU_String *first = &req_username;
+        UWU_String *other = &conn_info->username;
+
+        if (!UWU_String_firstGoesFirst(first, other)) {
+          first = &conn_info->username;
+          other = &req_username;
+        }
+
+        UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+        UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+        UWU_String_freeWithMalloc(&tmp);
+
+        UWU_ChatHistory *chat =
+            hashmap_get(&UWU_STATE->chats, combined.data, combined.length);
+        if (NULL == chat) {
+          fprintf(stderr, "Error: Can't get chat associated with: %.*s",
+                  (int)combined.length, combined.data);
+          return;
+        }
+
+        size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+        char *data = UWU_Arena_alloc(&conn_info->req_arena, max_msg_size, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC(
+              "Fatal: Arena couldn't allocate enough memory for message!");
+          return;
+        }
+
+        data[0] = GOT_MESSAGES;
+        data[1] = chat->count;
+        size_t data_length = 2;
+
+        UWU_ChatHistory_Iterator iter = UWU_ChatHistory_iter(chat);
+        for (size_t i = iter.start; i < iter.end; i++) {
+          UWU_ChatEntry entry = UWU_ChatHistory_get(chat, i % chat->capacity);
+
+          data[data_length] = entry.origin_username.length;
+          data_length++;
+
+          for (size_t j = 0; j < entry.origin_username.length; j++) {
+            data[data_length] = UWU_String_getChar(&entry.origin_username, j);
+            data_length++;
+          }
+
+          data[data_length] = entry.content.length;
+          data_length++;
+
+          for (size_t j = 0; j < entry.content.length; j++) {
+            data[data_length] = UWU_String_getChar(&entry.content, j);
+            data_length++;
+          }
+        }
+
+        UWU_String response = {.data = data, .length = data_length};
+        send_msg(c, &response);
+      }
+
+    } break;
+
+    default:
+      fprintf(stderr, "Error: Unrecognized message!\n");
+      return;
+    }
+
+    // Connection closed!
+  } else if (ev == MG_EV_CLOSE) {
+    UWU_WSConnInfo *conn_info = c->fn_data;
+    // This may be null when we free the manager!
+    if (conn_info == NULL) {
+      return;
+    }
+
+    UWU_User user = {.username = conn_info->username, .status = DISCONNETED};
+
+    MG_INFO(("Disconnecting %.*s", (int)conn_info->username.length,
+             conn_info->username.data));
+
+    UWU_UserList_removeByUsernameIfExists(&UWU_STATE->active_users,
+                                          &conn_info->username);
+    hashmap_iterate_pairs(&UWU_STATE->chats, remove_if_matches, conn_info);
 
     int max_length = 3 + 255;
     char buff[max_length];
     UWU_String msg = changed_status_builder(buff, &user);
-    MG_INFO(("Broadcasting %.*s disconnection ", (int)conn_data->length,
-             conn_data->data));
+    MG_INFO(("Broadcasting %.*s disconnection ",
+             (int)conn_info->username.length, conn_info->username.data));
     broadcast_msg(&msg);
 
-    UWU_String_freeWithMalloc(conn_data);
-    free(conn_data);
+    UWU_WSConnInfo_deinit(conn_info);
+    free(conn_info);
   }
 }
 
