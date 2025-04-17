@@ -12,6 +12,8 @@
 #include <QListView>
 #include <QMainWindow>
 #include <QModelIndex>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QObject>
 #include <QPainter>
 #include <QPushButton>
@@ -109,15 +111,19 @@ void deinit_ClientState(UWU_Err *err) {}
 // CONTROLLER
 // *******************************************
 
+// Object responsable for handling a message from the WS.
+// One is created per message from tehe server.
 class MessageTask : public QObject, public QRunnable {
   Q_OBJECT
 public:
   MessageTask(UWU_String s) : msg(s) {}
 
+  // Logic to handle message processing.
   void run() override {
     printf("HANDLING MESSAGE...\n");
     printf("GOT ECHO REPLY: [%.*s]\n", (int)msg.length, msg.data);
 
+    QMutexLocker locker(&mutex);
     switch (msg.data[0]) {
     case ERROR:
       /* code */
@@ -148,12 +154,21 @@ public:
   }
 
 private:
+  // Message to process.
   UWU_String msg;
+  // Shared mutex across all MessageTask instances for syncronization.
+  static QMutex mutex;
 
 signals:
+  // Signal sent when a message is done processing.
   void msgPrococessed();
 };
+// Mutex initialization
+QMutex MessageTask::mutex;
 
+// Object for controlling the Websocket connection,
+// message receiving and update global state: UWU_STATE.
+// One can say it's the core logic of the app.
 class Controller : public QObject {
   Q_OBJECT
   struct mg_mgr mgr;
@@ -182,19 +197,19 @@ public slots:
       MG_ERROR(("%p %s", c->fd, (char *)ev_data));
     } else if (ev == MG_EV_WS_OPEN) {
       // When websocket handshake is successful, send message
+      print_mg_addr(&c->loc);
       printf("SENDING MESSAGE\n");
       mg_ws_send(c, "hello", 5, WEBSOCKET_OP_TEXT);
-      print_mg_addr(&c->loc);
+      mg_ws_send(c, "hello2", 6, WEBSOCKET_OP_TEXT);
     } else if (ev == MG_EV_WS_MSG) {
 
+      // Copying message
       struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
-      printf("GOT ECHO REPLY: [%.*s]\n", (int)wm->data.len, wm->data.buf);
-
       UWU_Err err = NO_ERROR;
       UWU_String msg = UWU_String_fromMongoose(&wm->data, err);
 
+      // Launching thread
       MessageTask *task = new MessageTask(msg);
-
       QObject::connect(task, &MessageTask::msgPrococessed, controller,
                        &Controller::onMsgProcessed, Qt::QueuedConnection);
       QThreadPool::globalInstance()->start(task);
@@ -217,6 +232,8 @@ public slots:
     pollTimer->start(50);
   }
 
+  // Called when a TaskMessage has done its work.
+  // It instantly signals a signal the UI Thread to refresh itself.
   void onMsgProcessed() {
     printf("MSG PROCESSED...\n");
     emit stateChanged();
