@@ -126,7 +126,7 @@ void deinitialize_server_state(UWU_ServerState *state) {
 // Information associated with a specific connection.
 typedef struct {
   UWU_String username;
-  UWU_Arena req_arena;
+  UWU_Arena resp_arena;
 } UWU_WSConnInfo;
 
 // Creates a WSConnInfo copying the username.
@@ -137,13 +137,13 @@ void UWU_WSConnInfo_init(UWU_WSConnInfo *info, UWU_String *username,
     return;
   }
   info->username = copy;
-  info->req_arena = req_arena;
+  info->resp_arena = req_arena;
 }
 
 // Frees the username and deinits the arena.
 void UWU_WSConnInfo_deinit(UWU_WSConnInfo *info) {
   UWU_String_freeWithMalloc(&info->username);
-  UWU_Arena_deinit(info->req_arena);
+  UWU_Arena_deinit(info->resp_arena);
 }
 
 /* *****************************************************************************
@@ -478,7 +478,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     size_t msg_len = wm->data.len;
 
     UWU_WSConnInfo *conn_info = c->fn_data;
-    UWU_Arena_reset(&conn_info->req_arena);
+    UWU_Arena_reset(&conn_info->resp_arena);
     UWU_Err err = NO_ERROR;
 
     if (wm->data.len <= 0) {
@@ -512,7 +512,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
 
       size_t response_size = user->username.length + 2;
 
-      char *data = UWU_Arena_alloc(&conn_info->req_arena, response_size, err);
+      char *data = UWU_Arena_alloc(&conn_info->resp_arena, response_size, err);
       if (err != NO_ERROR) {
         MG_ERROR(("Error: Memory allocation failed!"));
         return;
@@ -527,7 +527,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
     } break;
     case LIST_USERS: {
       char *data =
-          UWU_Arena_alloc(&conn_info->req_arena,
+          UWU_Arena_alloc(&conn_info->resp_arena,
                           2 + (255 + 1) * UWU_STATE->active_users.length, err);
       if (err != NO_ERROR) {
         UWU_PANIC("Fatal: Allocation of memory for response failed!");
@@ -633,7 +633,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       update_last_action(old_user);
 
       UWU_String response =
-          create_changed_status_message(&conn_info->req_arena, &new_user);
+          create_changed_status_message(&conn_info->resp_arena, &new_user);
       broadcast_msg(&response);
     } break;
     case SEND_MESSAGE: {
@@ -669,7 +669,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         UWU_ChatHistory_addMessage(&UWU_STATE->group_chat, &entry);
 
         size_t data_length = 3 + 1 + message_length;
-        char *data = UWU_Arena_alloc(&conn_info->req_arena, data_length, err);
+        char *data = UWU_Arena_alloc(&conn_info->resp_arena, data_length, err);
         if (err != NO_ERROR) {
           UWU_PANIC(
               "Fatal: Failed to allocate memory for GOT_MESSAGE response!");
@@ -701,7 +701,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
             if (current->data.status == INACTIVE) {
               current->data.status = ACTIVE;
               UWU_String response = create_changed_status_message(
-                  &conn_info->req_arena, &current->data);
+                  &conn_info->resp_arena, &current->data);
               broadcast_msg(&response);
             }
           }
@@ -739,7 +739,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         UWU_ChatHistory_addMessage(history, &entry);
 
         size_t data_length = 4 + conn_info->username.length + message_length;
-        char *data = UWU_Arena_alloc(&conn_info->req_arena, data_length, err);
+        char *data = UWU_Arena_alloc(&conn_info->resp_arena, data_length, err);
         if (err != NO_ERROR) {
           UWU_PANIC(
               "Fatal: Failed to allocate memory for GOT_MESSAGE response!");
@@ -779,7 +779,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
             if (current->data.status == INACTIVE) {
               current->data.status = ACTIVE;
               UWU_String response = create_changed_status_message(
-                  &conn_info->req_arena, &current->data);
+                  &conn_info->resp_arena, &current->data);
               broadcast_msg(&response);
             }
 
@@ -809,7 +809,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
 
       if (UWU_String_equal(&req_username, &GROUP_CHAT_CHANNEL)) {
         size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
-        char *data = UWU_Arena_alloc(&conn_info->req_arena, max_msg_size, err);
+        char *data = UWU_Arena_alloc(&conn_info->resp_arena, max_msg_size, err);
         if (err != NO_ERROR) {
           UWU_PANIC(
               "Fatal: Arena couldn't allocate enough memory for message!");
@@ -867,7 +867,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         }
 
         size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
-        char *data = UWU_Arena_alloc(&conn_info->req_arena, max_msg_size, err);
+        char *data = UWU_Arena_alloc(&conn_info->resp_arena, max_msg_size, err);
         if (err != NO_ERROR) {
           UWU_PANIC(
               "Fatal: Arena couldn't allocate enough memory for message!");
