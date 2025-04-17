@@ -41,3 +41,9 @@ With the project build now the executable is created in the build directory and 
 # Be sure you are in the build directory or specify it in the command when runnung the project
 ./chad_ui
 ```
+
+# Design
+
+## Multithreading
+
+[diagram](./diagrams/multithreading.png)
