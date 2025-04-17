@@ -161,10 +161,18 @@ class Controller : public QObject {
 
 public slots:
 
+  // Cleaning function to call when window is closed
+  void stop() {
+    printf("\nCleaning resources...\n");
+    mg_mgr_free(&mgr);
+  }
+
   static void ws_listener(struct mg_connection *c, int ev, void *ev_data) {
     Controller *controller = (Controller *)c->fn_data;
     if (ev == MG_EV_OPEN) {
       c->is_hexdumping = 1;
+    } else if (ev == MG_EV_CLOSE) {
+      printf("Closing connection\n");
     } else if (ev == MG_EV_CONNECT && mg_url_is_ssl(s_url)) {
       // On connection established
       struct mg_tls_opts opts = {.name = mg_url_host(s_url)};
@@ -207,11 +215,6 @@ public slots:
     connect(pollTimer, &QTimer::timeout, this,
             [=]() { mg_mgr_poll(&mgr, 100); });
     pollTimer->start(50);
-  }
-  // Cleaning function to call when window is closed
-  void stop() {
-    printf("\nCleaning resources...\n");
-    mg_mgr_free(&mgr);
   }
 
   void onMsgProcessed() {
@@ -517,10 +520,9 @@ int main(int argc, char *argv[]) {
   QObject::connect(controller, &Controller::finished, thread, &QThread::quit);
   QObject::connect(controller, &Controller::finished, controller,
                    &Controller::deleteLater);
-  QObject::connect(thread, &QThread::finished, controller,
-                   &QThread::deleteLater);
-  QObject::connect(&app, &QCoreApplication::aboutToQuit, controller,
-                   &Controller::stop);
+  QObject::connect(thread, &QThread::finished, thread, &QThread::deleteLater);
+  QObject::connect(&app, &QCoreApplication::aboutToQuit,
+                   [controller]() { controller->stop(); });
 
   // Start the thread
   thread->start();
@@ -650,5 +652,6 @@ int main(int argc, char *argv[]) {
   mainWindow.resize(1200, 1000);
   mainWindow.show();
 
-  return app.exec();
+  int ret = app.exec();
+  return ret;
 }
