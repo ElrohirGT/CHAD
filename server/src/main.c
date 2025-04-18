@@ -49,10 +49,9 @@ static const UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 static const size_t MAX_MESSAGES_PER_CHAT = 100;
 
 // The amount of seconds that need to pass in order for a user to become IDLE.
-// static const time_t IDLE_SECONDS_LIMIT = 15;
+static const time_t IDLE_SECONDS_LIMIT = 15;
 // The amount of seconds that we wait before checking for IDLE users again.
-// static const struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec =
-// 0};
+static const struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
 
 /* *****************************************************************************
 Server State
@@ -252,70 +251,59 @@ UWU_String create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
   }
 
   return changed_status_builder(data, info);
-
-  // data[0] = CHANGED_STATUS;
-  // data[1] = info->username.length;
-  // for (int i = 0; i < info->username.length; i++) {
-  //   UWU_String u = info->username;
-  //   data[2 + i] = UWU_String_charAt(&u, i);
-  // }
-  // // memcpy(&data[2], &info->username.data, info->username.length);
-  // data[data_length - 1] = info->status;
-  //
-  // UWU_String msg = {.length = data_length, .data = data};
-  // return msg;
 }
 
 /* *****************************************************************************
 IDLE Detector
 ***************************************************************************** */
-// static void *idle_detector(void *p) {
-//   UWU_Err err = NO_ERROR;
-//   UWU_Arena arena = UWU_Arena_init(2 + 1 + 255, err);
-//   if (err != NO_ERROR) {
-//     UWU_PANIC("Fatal: Failed to initialize idle_detector arena!");
-//     return NULL;
-//   }
-//
-//   // UWU_UserList *active_usernames = (UWU_UserList *)p;
-//   // fprintf(stderr, "Info: active_usernames received in: %p",
-//   //         (void *)&UWU_STATE->active_usernames);
-//   UWU_UserList usernames = UWU_STATE->active_usernames;
-//   while (!UWU_STATE->is_shutting_off) {
-//     fprintf(stderr, "Info: Checking to IDLE %zu active users...",
-//             usernames.length);
-//     time_t now = time(NULL);
-//
-//     if ((clock_t)-1 == now) {
-//       UWU_PANIC("Fatal: Failed to get current clock time!");
-//       UWU_Arena_deinit(arena);
-//       return NULL;
-//     }
-//
-//     for (struct UWU_UserListNode *current = usernames.start; current != NULL;
-//          current = current->next) {
-//       if (current->is_sentinel) {
-//         continue;
-//       }
-//
-//       time_t seconds_diff = difftime(now, current->data.last_action);
-//       UWU_ConnStatus status = current->data.status;
-//       if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
-//         UWU_Arena_reset(&arena);
-//         fprintf(stderr, "Info: Updating %.*s as INACTIVE!",
-//                 current->data.username.length, current->data.username.data);
-//         current->data.status = INACTIVE;
-//         UWU_String msg = create_changed_status_message(&arena,
-//         &current->data); broadcast_msg(&UWU_STATE->manager, &msg);
-//       }
-//     }
-//
-//     nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
-//   }
-//
-//   UWU_Arena_deinit(arena);
-//   return NULL;
-// }
+static void *idle_detector(void *p) {
+  UWU_Err err = NO_ERROR;
+  UWU_Arena arena = UWU_Arena_init(2 + 1 + 255, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to initialize idle_detector arena!");
+    return NULL;
+  }
+
+  while (!UWU_STATE->is_shutting_off) {
+    UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
+                "Fatal: Failed to lock active_users lock!");
+    MG_INFO(("Checking to IDLE %d active users...",
+             (int)UWU_STATE->active_users.length));
+    time_t now = time(NULL);
+
+    if ((clock_t)-1 == now) {
+      UWU_PANIC("Fatal: Failed to get current clock time!");
+      UWU_Arena_deinit(arena);
+    } else {
+      for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+           current != NULL; current = current->next) {
+        if (current->is_sentinel) {
+          continue;
+        }
+
+        time_t seconds_diff = difftime(now, current->data.last_action);
+        UWU_ConnStatus status = current->data.status;
+        if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
+          UWU_Arena_reset(&arena);
+          MG_INFO(("Updating %.*s as INACTIVE!",
+                   (int)current->data.username.length,
+                   current->data.username.data));
+          current->data.status = INACTIVE;
+          UWU_String msg =
+              create_changed_status_message(&arena, &current->data);
+          broadcast_msg(&msg);
+        }
+      }
+
+      UWU_PanicIf(pthread_mutex_unlock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Failed to unlock active_users lock!");
+      nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
+    }
+  }
+
+  UWU_Arena_deinit(arena);
+  return NULL;
+}
 
 void *message_handler(void *thread_info) {
   UWU_Err err = NO_ERROR;
@@ -1176,8 +1164,11 @@ int main(int argc, char *argv[]) {
   sigaction(SIGINT, &action, NULL);
   sigaction(SIGTERM, &action, NULL);
 
-  pthread_t id;
-  pthread_create(&id, NULL, shutdown_with_time, NULL);
+  pthread_t timer_shutdown;
+  pthread_create(&timer_shutdown, NULL, shutdown_with_time, NULL);
+
+  pthread_t idle_detector_pid;
+  pthread_create(&idle_detector_pid, NULL, idle_detector, NULL);
 
   // Parse command-line flags
   for (int i = 1; i < argc; i++) {
@@ -1214,15 +1205,8 @@ int main(int argc, char *argv[]) {
   for (; !UWU_STATE->is_shutting_off;)
     mg_mgr_poll(&state.manager, 1000); // Infinite event loop
 
-  pthread_join(id, NULL);
-
-  // for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
-  //      current != NULL; current = current->next) {
-  //   if (current->is_sentinel) {
-  //     continue;
-  //   }
-  //   mg_close_conn(current->data.conn);
-  // }
+  pthread_join(timer_shutdown, NULL);
+  pthread_join(idle_detector_pid, NULL);
 
   deinitialize_server_state(UWU_STATE);
   return 0;
