@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 
+// #define HOST "localhost"
+#define HOST "3.144.17.149"
+#define PORT "8000"
+
 int SHOULD_FINISH = 1 | (1 << 1);
 int current = 0;
 
@@ -98,10 +102,10 @@ int main(void) {
   sigaction(SIGINT, &action, NULL);
   sigaction(SIGTERM, &action, NULL);
 
-  const char *s_url = "http://127.0.0.1:8000/?name=Flavio";
+  const char *s_url = "http://" HOST ":" PORT "/?name=Flavio";
   struct mg_connection *flavio =
       mg_ws_connect(&mgr, s_url, fnFlavio, NULL, NULL); // Create client
-  s_url = "http://127.0.0.1:8000/?name=Jose";
+  s_url = "http://" HOST ":" PORT "/?name=Jose";
   struct mg_connection *jose =
       mg_ws_connect(&mgr, s_url, fnJose, NULL, NULL); // Create client
   while (flavio && jose && current != SHOULD_FINISH) {
