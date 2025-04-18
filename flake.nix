@@ -21,6 +21,13 @@
     devShells = forAllSystems (system: let
       pkgs = nixpkgsFor.${system};
     in {
+      prod = pkgs.mkShell {
+        packages = [
+          pkgs.clang
+          pkgs.lld
+        ];
+      };
+
       default = pkgs.mkShell {
         packages = [
           pkgs.clang

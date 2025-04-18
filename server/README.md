@@ -22,9 +22,8 @@ This file acts as the build system for the entire project!
 To build the project simply execute:
 
 ```bash
-# This rebuilds the dependencies every time!
 # Execute `./nob -h` to get a list of all available commands!
-./nob -d
+./nob
 ```
 
 `./nob` detects changes on itself! So if you ever need to change the `./nob.c`
