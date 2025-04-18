@@ -169,8 +169,6 @@ void deinit_ClientState(UWU_ClientState *state) {
   MG_INFO(("Cleaning Current User"));
   UWU_String_freeWithMalloc(&state->CurrentUser.username);
 
-  MG_INFO(("Cleaning Client IP"));
-
   MG_INFO(("Cleaning User List..."));
   UWU_UserList_deinit(&state->ActiveUsers);
 
@@ -231,7 +229,7 @@ void store_ip_addr(struct mg_addr *addr) {
 void get_messages_handler();
 void send_message_handler(UWU_String *text);
 void list_users_handler();
-void tooggle_status_handler();
+void change_status_handler(UWU_ConnStatus status);
 
 // Object responsable for handling a message from the WS.
 // One is created per message from tehe server.
@@ -322,7 +320,6 @@ public slots:
       store_ip_addr(&c->loc);
       list_users_handler();
     } else if (ev == MG_EV_WS_MSG) {
-
       // Copying message
       struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
       UWU_Err err = NO_ERROR;
@@ -383,7 +380,7 @@ void get_user_handler() {
 }
 
 // Change status of the current user
-void tooggle_status_handler() {
+void change_status_handler(UWU_ConnStatus status) {
   if (UWU_STATE == NULL) {
     return;
   }
@@ -403,11 +400,7 @@ void tooggle_status_handler() {
     data[2 + i] = UWU_String_charAt(&currentUser->username, i);
   }
 
-  if (currentUser->status == ACTIVE || currentUser->status == INACTIVE) {
-    data[length - 1] = BUSY;
-  } else {
-    data[length - 1] = ACTIVE;
-  }
+  data[length - 1] = status;
 
   mg_ws_send(ws_conn, data, length, WEBSOCKET_OP_BINARY);
   free(data);
