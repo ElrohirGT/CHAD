@@ -514,7 +514,6 @@ void *message_handler(void *thread_info) {
                                  new_user.username.data, new_user.status));
 
                         old_user->status = new_user.status;
-                        old_user->username = req_username;
                         update_last_action(old_user);
 
                         UWU_String response = create_changed_status_message(
@@ -652,7 +651,7 @@ void *message_handler(void *thread_info) {
                                 history->channel_name.data);
 
                     size_t data_length =
-                        4 + conn_username.length + message_length;
+                        3 + conn_username.length + message_length;
                     char *data = UWU_Arena_alloc(&resp_arena, data_length, err);
                     if (err != NO_ERROR) {
                       UWU_PANIC(
