@@ -294,9 +294,19 @@ class Controller : public QObject {
   Q_OBJECT
   struct mg_mgr mgr;
   bool done = false;
+  QLabel *ipLabel = nullptr;
 
 public slots:
 
+  void setIpLabel(QLabel *label) {
+    ipLabel = label;
+  }
+
+  void updateIpLabel() {
+    if (ipLabel != nullptr) {
+      ipLabel->setText(QString::fromUtf8(ip));
+    }
+  }
   // Cleaning function to call when window is closed
   void stop() {
     printf("\nClosing websocket connection...\n");
@@ -319,6 +329,10 @@ public slots:
     } else if (ev == MG_EV_WS_OPEN) {
       // When websocket handshake is successful, send message
       store_ip_addr(&c->loc);
+
+      // Add QT controller for updating IpLabel
+      controller->updateIpLabel();
+
       list_users_handler();
     } else if (ev == MG_EV_WS_MSG) {
       // Copying message
@@ -720,15 +734,6 @@ int main(int argc, char *argv[]) {
   // LAYOUT INITIALIZATION
   // **********************
 
-  std::vector<UserData> users = {
-      {"Jose", "1.2.3"}, {"Maria", "4.5.6"}, {"Pedro", "7.8.9"},
-      {"Jose", "1.2.3"}, {"Maria", "4.5.6"}, {"Pedro", "7.8.9"},
-      {"Jose", "1.2.3"}, {"Maria", "4.5.6"}, {"Pedro", "7.8.9"},
-      {"Jose", "1.2.3"}, {"Maria", "4.5.6"}, {"Pedro", "7.8.9"},
-      {"Jose", "1.2.3"}, {"Maria", "4.5.6"}, {"Pedro", "7.8.9"},
-      {"Jose", "1.2.3"}, {"Maria", "4.5.6"}, {"Pedro", "7.8.9"},
-  };
-
   bool isBusy = false;
 
   // Crear la ventana principal
@@ -781,8 +786,9 @@ int main(int argc, char *argv[]) {
   QHBoxLayout *inputLayout = new QHBoxLayout();
   inputLayout->setContentsMargins(0, 0, 0, 0);
 
-  QLabel *ipLabel = new QLabel("127.0.0.1");
+  QLabel *ipLabel = new QLabel(ip);
   ipLabel->setContentsMargins(10, 0, 0, 0);
+  ipLabel->setText(QString::fromUtf8(ip));
   QLabel *nameLabel = new QLabel(username);
   nameLabel->setContentsMargins(10, 0, 0, 0);
   nameLabel->setStyleSheet("font-size: 25px;");
@@ -839,6 +845,8 @@ int main(int argc, char *argv[]) {
 
   mainWindow.resize(1200, 1000);
   mainWindow.show();
+
+  controller->setIpLabel(ipLabel);
 
   int ret = app.exec();
   return ret;
