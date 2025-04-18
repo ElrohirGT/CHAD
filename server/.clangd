@@ -1,6 +1,6 @@
 CompileFlags:
   Add:
     - "-Wall"
-    - "-I../../deps/libwebsockets/build/include"
+    # - "-I../../deps/libwebsockets/build/include"
     # Adding includes for nob.h
     # - "-I../deps/nob.h/"
