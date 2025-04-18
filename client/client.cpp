@@ -223,12 +223,23 @@ void store_ip_addr(struct mg_addr *addr) {
   printf("Port: %u\n", ntohs(addr->port));
 }
 
+void print_msg(UWU_String *msg, char *prefix, char *action) {
+  printf("%s %s: [ ", prefix, action);
+  for (int i = 0; i < msg->length; i++) {
+    printf("%c (%d)", msg->data[i], msg->data[i]);
+    if (i + 1 < msg->length) {
+      printf(", ");
+    }
+  }
+  printf(" ]\n");
+}
+
 // *******************************************
 // CONTROLLER
 // *******************************************
 
 void get_messages_handler();
-void send_message_handler(UWU_String *text);
+void send_message_handler(UWU_String *user_recipient, UWU_String *text);
 void list_users_handler();
 void change_status_handler(UWU_ConnStatus status);
 
@@ -241,8 +252,7 @@ public:
 
   // Logic to handle message processing.
   void run() override {
-    printf("HANDLING MESSAGE...\n");
-    printf("GOT ECHO REPLY: [%.*s]\n", (int)msg.length, msg.data);
+    print_msg(&msg, "Client", "GOT MSG:");
 
     QMutexLocker locker(&mutex);
     switch (msg.data[0]) {
@@ -384,7 +394,7 @@ signals:
 void list_users_handler() {
   char data[1] = {1};
   mg_ws_send(ws_conn, data, 1, WEBSOCKET_OP_BINARY);
-  printf("LIST USERS!");
+  printf("LIST USERS!\n");
 }
 
 // NOTE: MIGHT NOT BE USEFUL FOR OUR PURPOSES
@@ -425,15 +435,10 @@ void change_status_handler(UWU_ConnStatus status) {
 void get_messages_handler() {}
 
 // Sends a chat message with given history
-void send_message_handler(UWU_String *text) {
-  // TODO: handle when no chat is selected
-  UWU_ChatHistory *currentChat = UWU_STATE->currentChat;
-  if (currentChat == NULL) {
-    return;
-  }
-  size_t username_length = currentChat->channel_name.length;
+void send_message_handler(UWU_String *user_recipient, UWU_String *text) {
+  size_t username_length = user_recipient->length;
   size_t message_length = text->length;
-  size_t length = 4 + username_length + message_length;
+  size_t length = 3 + username_length + message_length;
   printf("Total length: %d\n", length);
   printf("username lenght: %d\n", username_length);
   printf("message lenght: %d\n", message_length);
@@ -446,15 +451,18 @@ void send_message_handler(UWU_String *text) {
   data[0] = SEND_MESSAGE;
   data[1] = username_length;
   for (size_t i = 0; i < username_length; i++) {
-    data[2 + i] = UWU_String_charAt(&currentChat->channel_name, i);
+    data[2 + i] = UWU_String_charAt(user_recipient, i);
   }
   // a | a | a a a | a | a
   // 0 | 1 | 2 3 4 | 5 | 6
-  // 1   2   3 4 5   5 | 7
+  // 1   2   3 4 5 | 5 | 7
   data[2 + username_length] = message_length;
   for (size_t i = 0; i < message_length; i++) {
     data[3 + username_length + i] = UWU_String_charAt(text, i);
   }
+
+  UWU_String a = UWU_String{.data = data, .length = length};
+  print_msg(&a, "CLIENT", "SENT");
 
   mg_ws_send(ws_conn, data, length, WEBSOCKET_OP_BINARY);
 
