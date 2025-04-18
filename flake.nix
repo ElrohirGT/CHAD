@@ -18,6 +18,21 @@
     # Nixpkgs instantiated for supported system types.
     nixpkgsFor = forAllSystems (system: import nixpkgs {inherit system;});
   in {
+    packages = forAllSystems (system: let
+      pkgs = nixpkgsFor.${system};
+    in {
+      prod_server = pkgs.writeShellApplication {
+        name = "CHAD_server";
+        runtimeInputs = [pkgs.clang pkgs.lld];
+        text = ''
+          cd ./server/
+          cc -o nob nob.c
+          ./nob
+          ./build/main -url "ws://0.0.0.0:8000"
+        '';
+      };
+    });
+
     devShells = forAllSystems (system: let
       pkgs = nixpkgsFor.${system};
     in {
