@@ -30,6 +30,9 @@
 #include <QWidget>
 #include <cstdio>
 #include <cstring>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <vector>
 
 // ***********************************************
@@ -88,7 +91,7 @@ struct UWU_ClientState {
   // selected.
   UWU_ChatHistory *currentChat;
   // Group chat user
-  UWU_User GroupChat;
+  // UWU_User GroupChat;
   // Saves all the chat histories.
   // Key: The name of the user this client chat chat to.
   // Value: An UWU_History item.
@@ -100,12 +103,99 @@ UWU_ClientState *UWU_STATE = NULL;
 // Connection to the websocket server
 static mg_connection *ws_conn;
 
-static const char *s_url = "ws://ws.vi-server.org/mirror/";
+static char *s_url;
 static const char *s_ca_path = "ca.pem";
 
-void init_ClientState(UWU_Err *err) {}
+UWU_ClientState init_ClientState(char *username, char *url, UWU_Err err) {
+  UWU_ClientState state = UWU_ClientState{};
 
-void deinit_ClientState(UWU_Err *err) {}
+  // SET URL
+  // Calculate required length for the final URL
+  int needed = snprintf(NULL, 0, "%s?name=%s", url, username);
+  printf("size %d needed\n", needed);
+  if (needed < 0) {
+    UWU_PANIC("Could not calculate connection URL size.\n");
+    err = MALLOC_FAILED;
+    return state;
+  }
+
+  // Allocate memory (+1 for null terminator)
+  s_url = (char *)malloc(needed + 1);
+  if (s_url == NULL) {
+    UWU_PANIC("Memory allocation failed.\n");
+    err = MALLOC_FAILED;
+    return state;
+  }
+
+  // Build the actual URL
+  snprintf(s_url, needed + 1, "%s?name=%s", url, username);
+
+  // Print for debug
+  printf("Username: %s\n", username);
+  printf("Final connection URL: %s\n", s_url);
+
+  // CREATE USER
+  size_t name_length = strlen(username);
+  char *username_data = (char *)malloc(name_length);
+  if (NULL == username_data) {
+    err = MALLOC_FAILED;
+    return state;
+  }
+  strcpy(username_data, username);
+  UWU_String current_username = {.data = username_data, .length = name_length};
+
+  // User initialization
+  state.CurrentUser.username = current_username;
+  state.CurrentUser.status = ACTIVE;
+
+  // CREATE USER LIST
+  state.ActiveUsers = UWU_UserList_init(err);
+  if (err != NO_ERROR) {
+    return state;
+  }
+
+  // CREATE CHATS
+  if (0 != hashmap_create(8, &state.Chats)) {
+    err = HASHMAP_INITIALIZATION_ERROR;
+    return state;
+  }
+
+  // CREATE USER GROUP
+  char *group_chat_name = (char *)malloc(sizeof(char));
+  if (group_chat_name == NULL) {
+    err = MALLOC_FAILED;
+    return state;
+  }
+  *group_chat_name = '~';
+  UWU_String uwu_name = {.data = group_chat_name, .length = 1};
+
+  // state.GroupChat = UWU_ChatHistory_init(255, uwu_name, err);
+  // if (err != NO_ERROR) {
+  //   return state;
+  // }
+
+  // SET CURRENT CHAT
+  return state;
+}
+
+void deinit_ClientState(UWU_ClientState *state) {
+  MG_INFO(("Cleaning current chat pointer..."));
+  state->currentChat = NULL;
+
+  MG_INFO(("Cleaning Current User"));
+  UWU_String_freeWithMalloc(&state->CurrentUser.username);
+
+  MG_INFO(("Cleaning Client IP"));
+
+  MG_INFO(("Cleaning User List..."));
+  UWU_UserList_deinit(&state->ActiveUsers);
+
+  MG_INFO(("Cleaning DM Chat histories..."));
+  hashmap_destroy(&state->Chats);
+
+  MG_INFO(("Cleaning connection url..."));
+  free(s_url);
+}
 
 // *******************************************
 // CONTROLLER
@@ -178,7 +268,7 @@ public slots:
 
   // Cleaning function to call when window is closed
   void stop() {
-    printf("\nCleaning resources...\n");
+    printf("\nClosing websocket connection...\n");
     mg_mgr_free(&mgr);
   }
 
@@ -199,8 +289,6 @@ public slots:
       // When websocket handshake is successful, send message
       print_mg_addr(&c->loc);
       printf("SENDING MESSAGE\n");
-      mg_ws_send(c, "hello", 5, WEBSOCKET_OP_TEXT);
-      mg_ws_send(c, "hello2", 6, WEBSOCKET_OP_TEXT);
     } else if (ev == MG_EV_WS_MSG) {
 
       // Copying message
@@ -233,13 +321,14 @@ public slots:
   }
 
   // Called when a TaskMessage has done its work.
-  // It instantly signals a signal the UI Thread to refresh itself.
+  // It instantly emits a signal to announce UWU state has changed.
   void onMsgProcessed() {
     printf("MSG PROCESSED...\n");
     emit stateChanged();
   }
 
 signals:
+  // Signal to announce UWU_STATE has changed.
   void stateChanged();
   void finished();
 };
@@ -255,10 +344,18 @@ void list_users_handler() {
 }
 
 // NOTE: MIGHT NOT BE USEFUL FOR OUR PURPOSES
-void get_user_handler() {}
+void get_user_handler() {
+  if (UWU_STATE == NULL) {
+    return;
+  }
+}
 
 // Change status of the current user
 void tooggle_status_handler() {
+  if (UWU_STATE == NULL) {
+    return;
+  }
+
   UWU_User *currentUser = &UWU_STATE->CurrentUser;
   size_t username_length = currentUser->username.length;
   size_t length = 3 + username_length;
@@ -339,7 +436,8 @@ public:
 protected:
   // In this function you can modify what happens when closing the chat
   void closeEvent(QCloseEvent *event) override {
-    printf("Bye bye...\n");
+    printf("CLEANING UP... \n");
+    deinit_ClientState(UWU_STATE);
     event->accept();
   }
 };
@@ -523,9 +621,36 @@ public:
 #include "client.moc"
 
 int main(int argc, char *argv[]) {
+
+  // GLOBAL STATE INITIALIZATION
+  // ***************************
+
+  if (argc != 3) {
+    fprintf(stderr, "Usage: %s <Username> <WebSocket_URL>\n", argv[0]);
+    return 1;
+  }
+
+  if (strlen(argv[1]) > 255) {
+    UWU_PANIC("Username to large!...");
+    return 1;
+  }
+
+  // Get the username from the command line arguments
+  char *username = argv[1];
+  // Get the WebSocket URL from the command line arguments
+  char *ws_url = argv[2];
+
+  UWU_Err err = NO_ERROR;
+
+  UWU_ClientState state = init_ClientState(username, ws_url, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Unable to client state...");
+    return 1;
+  }
+  UWU_STATE = &state;
+
   QApplication app(argc, argv);
 
-  // **********************
   // CONTROLLER AND WS CLIENT CONNECTION INITALIZAITON
   // **********************
 
@@ -544,7 +669,6 @@ int main(int argc, char *argv[]) {
   // Start the thread
   thread->start();
 
-  // **********************
   // LAYOUT INITIALIZATION
   // **********************
 
