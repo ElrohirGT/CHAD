@@ -786,6 +786,8 @@ void *message_handler(void *thread_info) {
       return NULL;
     }
   }
+
+  close(req_reader_fd);
   return NULL;
 }
 
@@ -1024,6 +1026,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       return;
     }
     pthread_join(conn_info->pid, NULL);
+    close(conn_info->writer);
 
     int max_length = 3 + 255;
     char buff[max_length];
