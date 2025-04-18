@@ -228,6 +228,11 @@ void store_ip_addr(struct mg_addr *addr) {
 // CONTROLLER
 // *******************************************
 
+void get_messages_handler();
+void send_message_handler(UWU_String *text);
+void list_users_handler();
+void tooggle_status_handler();
+
 // Object responsable for handling a message from the WS.
 // One is created per message from tehe server.
 class MessageTask : public QObject, public QRunnable {
@@ -315,6 +320,7 @@ public slots:
     } else if (ev == MG_EV_WS_OPEN) {
       // When websocket handshake is successful, send message
       store_ip_addr(&c->loc);
+      list_users_handler();
     } else if (ev == MG_EV_WS_MSG) {
 
       // Copying message
