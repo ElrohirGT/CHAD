@@ -27,7 +27,7 @@
         text = ''
           cd ./server/
           cc -o nob nob.c
-          ./nob
+          ./nob -p # Compile for production
           ./build/main -url "ws://0.0.0.0:8000"
         '';
       };
