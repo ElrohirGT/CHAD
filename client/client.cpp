@@ -28,49 +28,13 @@
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
+#include <arpa/inet.h>
 #include <cstdio>
 #include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
-
-// ***********************************************
-// UTILS
-// ***********************************************
-
-// Copy the data from a mongoose msg and returns it.
-// The user is responsable of freeing the data.
-UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
-  UWU_String str = {};
-
-  str.data = (char *)malloc(src->len);
-
-  if (src->buf == NULL) {
-    err = MALLOC_FAILED;
-    return str;
-  }
-
-  memcpy(str.data, src->buf, src->len);
-  str.length = src->len;
-
-  return str;
-}
-void print_mg_addr(struct mg_addr *addr) {
-  if (addr->is_ip6) {
-    printf("IPv6: ");
-    for (int i = 0; i < 16; i += 2) {
-      printf("%02x%02x", addr->ip[i], addr->ip[i + 1]);
-      if (i < 14)
-        printf(":");
-    }
-  } else {
-    printf("IPv4: %u.%u.%u.%u", addr->ip[0], addr->ip[1], addr->ip[2],
-           addr->ip[3]);
-  }
-
-  printf(" Port: %u\n", ntohs(addr->port));
-}
 
 // ***********************************************
 // CONSTANTS
@@ -102,6 +66,8 @@ UWU_ClientState *UWU_STATE = NULL;
 
 // Connection to the websocket server
 static mg_connection *ws_conn;
+
+static char ip[128] = {};
 
 static char *s_url;
 static const char *s_ca_path = "ca.pem";
@@ -160,21 +126,39 @@ UWU_ClientState init_ClientState(char *username, char *url, UWU_Err err) {
     return state;
   }
 
-  // CREATE USER GROUP
+  // CREATE GROUP USER
   char *group_chat_name = (char *)malloc(sizeof(char));
   if (group_chat_name == NULL) {
     err = MALLOC_FAILED;
     return state;
   }
   *group_chat_name = '~';
-  UWU_String uwu_name = {.data = group_chat_name, .length = 1};
+  UWU_String group_name = {.data = group_chat_name, .length = 1};
+  UWU_User group_user = {.username = group_name, .status = ACTIVE};
 
-  // state.GroupChat = UWU_ChatHistory_init(255, uwu_name, err);
-  // if (err != NO_ERROR) {
-  //   return state;
-  // }
+  UWU_UserListNode node = UWU_UserListNode_newWithValue(group_user);
+  UWU_UserList_insertEnd(&state.ActiveUsers, &node, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
+    return state;
+  }
+
+  UWU_ChatHistory *ht = (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
+  if (ht == NULL) {
+    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
+    return state;
+  }
+  *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, group_name, err);
+
+  if (0 != hashmap_put(&state.Chats, group_name.data, group_name.length, ht)) {
+    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
+  }
 
   // SET CURRENT CHAT
+  state.currentChat = NULL;
+
+  UWU_String_freeWithMalloc(&group_name);
+
   return state;
 }
 
@@ -195,6 +179,49 @@ void deinit_ClientState(UWU_ClientState *state) {
 
   MG_INFO(("Cleaning connection url..."));
   free(s_url);
+}
+
+// ***********************************************
+// UTILS
+// ***********************************************
+
+// Copy the data from a mongoose msg and returns it.
+// The user is responsable of freeing the data.
+UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
+  UWU_String str = {};
+
+  str.data = (char *)malloc(src->len);
+
+  if (src->buf == NULL) {
+    err = MALLOC_FAILED;
+    return str;
+  }
+
+  memcpy(str.data, src->buf, src->len);
+  str.length = src->len;
+
+  return str;
+}
+
+// Reads the IP from moongose and stores it in the global variable
+// ip if possible.
+void store_ip_addr(struct mg_addr *addr) {
+  if (addr->is_ip6) {
+    // IPv6
+    const char *result = inet_ntop(AF_INET6, addr->ip, ip, sizeof(ip));
+    if (result == NULL) {
+      UWU_PANIC("Unable to store ip addr v6");
+    }
+  } else {
+    // IPv4
+    const char *result = inet_ntop(AF_INET, addr->ip, ip, sizeof(ip));
+    if (result == NULL) {
+      UWU_PANIC("Unable to store ip addr v6");
+    }
+  }
+
+  printf("Stored IP: %s\n", ip);
+  printf("Port: %u\n", ntohs(addr->port));
 }
 
 // *******************************************
@@ -287,8 +314,7 @@ public slots:
       MG_ERROR(("%p %s", c->fd, (char *)ev_data));
     } else if (ev == MG_EV_WS_OPEN) {
       // When websocket handshake is successful, send message
-      print_mg_addr(&c->loc);
-      printf("SENDING MESSAGE\n");
+      store_ip_addr(&c->loc);
     } else if (ev == MG_EV_WS_MSG) {
 
       // Copying message
