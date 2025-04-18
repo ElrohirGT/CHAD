@@ -42,6 +42,7 @@
 // ***********************************************
 static const size_t MAX_MESSAGES_PER_CHAT = 100;
 static const size_t MAX_CHARACTERS_INPUT = 254;
+static const int UNRECOGNIZED_MSG = -1;
 
 // ***********************************************
 // MODEL
@@ -256,9 +257,11 @@ public:
 
     QMutexLocker locker(&mutex);
     switch (msg.data[0]) {
-    case ERROR:
-      /* code */
+    case ERROR: {
+      int err_code = (int)msg.data[1];
+      emit errorMsg(err_code);
       break;
+    }
     case LISTED_USERS:
       /* code */
       break;
@@ -277,6 +280,7 @@ public:
       break;
     default:
       fprintf(stderr, "Error: Unrecognized message from server!\n");
+      emit errorMsg(UNRECOGNIZED_MSG);
       break;
     }
     UWU_String_freeWithMalloc(&msg);
@@ -293,6 +297,8 @@ private:
 signals:
   // Signal sent when a message is done processing.
   void msgPrococessed();
+  // Sent when received an error from the server.
+  void errorMsg(int err);
 };
 // Mutex initialization
 QMutex MessageTask::mutex;
@@ -352,6 +358,8 @@ public slots:
       MessageTask *task = new MessageTask(msg);
       QObject::connect(task, &MessageTask::msgPrococessed, controller,
                        &Controller::onMsgProcessed, Qt::QueuedConnection);
+      QObject::connect(task, &MessageTask::errorMsg, controller,
+                       &Controller::onErrorMsg, Qt::QueuedConnection);
       QThreadPool::globalInstance()->start(task);
     }
   }
@@ -379,12 +387,37 @@ public slots:
     emit stateChanged();
   }
 
+  void onErrorMsg(int err) {
+    switch (err) {
+    case USER_NOT_FOUND:
+      printf("ERROR: User not found\n");
+      emit userNotFound();
+      break;
+    case INVALID_STATUS:
+      printf("ERROR: Invalid status\n");
+      emit invalidStatus();
+      break;
+    case EMPTY_MESSAGE:
+      printf("ERROR: Empty message\n");
+      emit emptyMessage();
+      break;
+    case USER_ALREADY_DISCONNECTED:
+      printf("ERROR: User already disconnected\n");
+      emit userAlreadyDisconnected();
+      break;
+    default:
+      printf("ERROR: Unrecognized message\n");
+      emit gotInvalidMessage();
+      break;
+    }
+  }
+
 signals:
   // Signal to announce UWU_STATE has changed.
   void stateChanged();
   void finished();
   // ERRORS
-  // The message received does not figure out on the protocol
+  // The message received from the server does not figure out on the protocol
   void gotInvalidMessage();
   // The user you tried to access doesn't exist!
   void userNotFound();
