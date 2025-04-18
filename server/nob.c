@@ -1,7 +1,7 @@
 #include <stdio.h>
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
-#include "./deps/nob/nob.h"
+#include "./deps/nob.h/nob.h"
 
 #define BUILD_FOLDER "build/"
 #define SRC_FOLDER "src/"
