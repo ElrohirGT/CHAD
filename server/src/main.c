@@ -267,7 +267,7 @@ static void *idle_detector(void *p) {
   while (!UWU_STATE->is_shutting_off) {
     UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
                 "Fatal: Failed to lock active_users lock!");
-    MG_INFO(("Checking to IDLE %d active users...",
+    MG_INFO(("[IDLE detector] Checking %d connected users...",
              (int)UWU_STATE->active_users.length));
     time_t now = time(NULL);
 
