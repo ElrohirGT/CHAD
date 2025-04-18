@@ -29,13 +29,13 @@
 #include <QVariant>
 #include <QWidget>
 #include <arpa/inet.h>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
-#include <cstddef>
 
 // ***********************************************
 // CONSTANTS
@@ -238,7 +238,7 @@ void print_msg(UWU_String *msg, char *prefix, char *action) {
 // CONTROLLER
 // *******************************************
 
-void get_messages_handler();
+void get_messages_handler(UWU_String *contact);
 void send_message_handler(UWU_String *user_recipient, UWU_String *text);
 void list_users_handler();
 void change_status_handler(UWU_ConnStatus status);
@@ -308,9 +308,7 @@ class Controller : public QObject {
 
 public slots:
 
-  void setIpLabel(QLabel *label) {
-    ipLabel = label;
-  }
+  void setIpLabel(QLabel *label) { ipLabel = label; }
 
   void updateIpLabel() {
     if (ipLabel != nullptr) {
@@ -385,6 +383,17 @@ signals:
   // Signal to announce UWU_STATE has changed.
   void stateChanged();
   void finished();
+  // ERRORS
+  // The message received does not figure out on the protocol
+  void gotInvalidMessage();
+  // The user you tried to access doesn't exist!
+  void userNotFound();
+  // The status you want to change to doesn't exist!
+  void invalidStatus();
+  // The message you wish to send is empty!
+  void emptyMessage();
+  // You're trying to communicate with a disconnected user!
+  void userAlreadyDisconnected();
 };
 
 // HANDLERS
@@ -432,7 +441,26 @@ void change_status_handler(UWU_ConnStatus status) {
 }
 
 // Fetch messages for the current chat history selected
-void get_messages_handler() {}
+void get_messages_handler(UWU_String *contact) {
+  if (UWU_STATE == NULL) {
+    return;
+  }
+  size_t length = 2 + contact->length;
+  char *data = (char *)malloc(length);
+  if (data == NULL) {
+    UWU_PANIC("Could not allocate memory to set STATUS BUSY");
+  }
+
+  data[0] = GET_MESSAGES;
+  data[1] = contact->length;
+
+  for (size_t i = 0; i < contact->length; i++) {
+    data[2 + i] = UWU_String_charAt(contact, i);
+  }
+
+  mg_ws_send(ws_conn, data, length, WEBSOCKET_OP_BINARY);
+  free(data);
+}
 
 // Sends a chat message with given history
 void send_message_handler(UWU_String *user_recipient, UWU_String *text) {
@@ -628,7 +656,7 @@ private:
       }
       node = node->next;
     }
-    
+
     return nullptr;
   }
 };
