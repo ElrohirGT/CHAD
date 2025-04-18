@@ -1,4 +1,5 @@
 #include "../server/deps/mongoose/mongoose.h"
+#include "pthread.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -54,6 +55,21 @@ void UWU_PANIC(const char *format, ...) {
   va_end(args);
 
   exit(1);
+}
+
+// Panics if the specified condition is true!
+//
+// For an explanation on what panic means, checkout `UWU_PANIC`.
+void UWU_PanicIf(UWU_Bool b, const char *format, ...) {
+  if (b) {
+    va_list args;
+
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+
+    exit(1);
+  }
 }
 
 /* *****************************************************************************
@@ -507,6 +523,10 @@ typedef struct {
   // This value will be valid as long as items are only added using the methods
   // from the `UWU_UserList` API
   size_t length;
+
+  // If you need thread safety, lock/unlock this mutex before/after every
+  // operation!
+  pthread_mutex_t mx;
 } UWU_UserList;
 
 // Attempts to find a user by it's name.
@@ -566,6 +586,7 @@ UWU_UserList UWU_UserList_init(UWU_Err err) {
   end_copy->previous = start_copy;
 
   UWU_UserList def_list = {.start = start_copy, .end = end_copy, .length = 0};
+  pthread_mutex_init(&def_list.mx, NULL);
   return def_list;
 }
 
@@ -581,6 +602,7 @@ void UWU_UserList_deinit(UWU_UserList *list) {
 
   free(list->end);
   free(list->start);
+  pthread_mutex_destroy(&list->mx);
 }
 
 // Inserts a specified node to the start of the list.
@@ -715,6 +737,9 @@ typedef struct {
   size_t capacity;
   // The idx of the next message to insert in the array.
   size_t next_idx;
+  // If you need thread safety lock/unlock this mutex before/after every
+  // operation!
+  pthread_mutex_t mx;
 } UWU_ChatHistory;
 
 // Creates a new ChatHistory with the specified capacity for messages.
@@ -732,6 +757,7 @@ UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_String channel_name,
   ht.count = 0;
   ht.next_idx = 0;
   ht.channel_name = channel_name;
+  pthread_mutex_init(&ht.mx, NULL);
 
   return ht;
 }
@@ -742,6 +768,7 @@ void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) {
   }
   free(ht->messages);
   UWU_String_freeWithMalloc(&ht->channel_name);
+  pthread_mutex_destroy(&ht->mx);
 }
 
 // Adds a new entry to the ChatHistory.

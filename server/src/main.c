@@ -68,14 +68,13 @@ typedef struct {
   // Key: The combination of both usernames as a UWU_String.
   // Value: An UWU_History item.
   struct hashmap_s chats;
+  // Lock/Unlock this mutex before/after every operation done to chats hashmap.
+  pthread_mutex_t chats_mx;
   // Flag to alert all threads that the server is shutting off.
   // ONLY THE MAIN thread should update this value!
   UWU_Bool is_shutting_off;
   // Mongoose message manager.
   struct mg_mgr manager;
-  // The mutation mutex, every time you need to modify the global state you'll
-  // need to lock this mutex!
-  pthread_mutex_t mutex;
 } UWU_ServerState;
 
 static UWU_ServerState *UWU_STATE = NULL;
@@ -85,7 +84,7 @@ UWU_ServerState initialize_server_state(UWU_Err err) {
 
   mg_mgr_init(&state.manager);
 
-  pthread_mutex_init(&state.mutex, NULL);
+  pthread_mutex_init(&state.chats_mx, NULL);
 
   state.active_users = UWU_UserList_init(err);
   if (err != NO_ERROR) {
@@ -126,6 +125,9 @@ void deinitialize_server_state(UWU_ServerState *state) {
 
   MG_INFO(("Cleaning group Chat history..."));
   UWU_ChatHistory_deinit(&state->group_chat);
+
+  MG_INFO(("Deinitializing mutex..."));
+  pthread_mutex_destroy(&state->chats_mx);
 
   MG_INFO(("Cleaning DM Chat histories..."));
   hashmap_destroy(&state->chats);
@@ -203,6 +205,7 @@ void send_msg(struct mg_connection *conn, const UWU_String *const msg) {
 }
 
 // Broadcasts an msg to all available connections!
+// PLEASE lock the active_users before calling this function!
 void broadcast_msg(UWU_String *msg) {
   for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
        current != NULL; current = current->next) {
@@ -389,70 +392,77 @@ void *message_handler(void *thread_info) {
       UWU_String user_to_get = {.data = &msg_data[2],
                                 .length = username_length};
 
+      UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Can't lock the active_users mutex!");
       UWU_User *user =
           UWU_UserList_findByName(&UWU_STATE->active_users, &user_to_get);
 
       if (user == NULL) {
         MG_ERROR(("Error: User not found!"));
-        return NULL;
+      } else {
+        printf("Username: %.*s\n", (int)user->username.length,
+               user->username.data);
+        printf("Status: %d\n", user->status);
+
+        size_t response_size = user->username.length + 2;
+
+        char *data = UWU_Arena_alloc(&resp_arena, response_size, err);
+        if (err != NO_ERROR) {
+          MG_ERROR(("Error: Memory allocation failed!"));
+        } else {
+          data[0] = GOT_USER;
+          memcpy(data + 1, user->username.data, user->username.length);
+          data[user->username.length + 1] = (char)user->status;
+
+          UWU_String response = {.data = data, .length = response_size};
+          send_msg(c, &response);
+        }
       }
+      UWU_PanicIf(pthread_mutex_unlock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Can't unlock the active_users mutex!");
 
-      printf("Username: %.*s\n", (int)user->username.length,
-             user->username.data);
-      printf("Status: %d\n", user->status);
-
-      size_t response_size = user->username.length + 2;
-
-      char *data = UWU_Arena_alloc(&resp_arena, response_size, err);
-      if (err != NO_ERROR) {
-        MG_ERROR(("Error: Memory allocation failed!"));
-        return NULL;
-      }
-
-      data[0] = GOT_USER;
-      memcpy(data + 1, user->username.data, user->username.length);
-      data[user->username.length + 1] = (char)user->status;
-
-      UWU_String response = {.data = data, .length = response_size};
-      send_msg(c, &response);
     } break;
     case LIST_USERS: {
+      UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Can't lock the active_users mutex!");
       char *data = UWU_Arena_alloc(
           &resp_arena, 2 + (255 + 1) * UWU_STATE->active_users.length, err);
       if (err != NO_ERROR) {
         UWU_PANIC("Fatal: Allocation of memory for response failed!");
-        return NULL;
-      }
 
-      data[0] = LISTED_USERS;
-      data[1] = UWU_STATE->active_users.length;
+      } else {
+        data[0] = LISTED_USERS;
+        data[1] = UWU_STATE->active_users.length;
 
-      size_t data_length = 2;
-      for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
-           current != NULL; current = current->next) {
+        size_t data_length = 2;
+        for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+             current != NULL; current = current->next) {
 
-        if (current->is_sentinel) {
-          continue;
+          if (current->is_sentinel) {
+            continue;
+          }
+
+          if (UWU_String_equal(&conn_username, &current->data.username)) {
+            update_last_action(&current->data);
+          }
+
+          size_t username_length = current->data.username.length;
+          data[data_length] = username_length;
+          data_length++;
+
+          memcpy(data + data_length, current->data.username.data,
+                 username_length);
+          data_length += username_length;
+
+          data[data_length] = current->data.status;
+          data_length++;
         }
 
-        if (UWU_String_equal(&conn_username, &current->data.username)) {
-          update_last_action(&current->data);
-        }
-
-        size_t username_length = current->data.username.length;
-        data[data_length] = username_length;
-        data_length++;
-
-        memcpy(&data[data_length], current->data.username.data,
-               username_length);
-        data_length += username_length;
-
-        data[data_length] = current->data.status;
-        data_length++;
+        UWU_String response = {.data = data, .length = data_length};
+        send_msg(c, &response);
       }
-
-      UWU_String response = {.data = data, .length = data_length};
-      send_msg(c, &response);
+      UWU_PanicIf(pthread_mutex_unlock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Can't unlock the active_users mutex!");
     } break;
     case CHANGE_STATUS: {
       // Message should contain at least a username length
@@ -474,53 +484,58 @@ void *message_handler(void *thread_info) {
         return NULL;
       }
 
+      UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Can't lock the active_users mutex!");
       UWU_User *old_user =
           UWU_UserList_findByName(&UWU_STATE->active_users, &req_username);
       if (NULL == old_user) {
         UWU_PANIC("Fatal: No active user with the given username found!");
-        return NULL;
+      } else {
+
+        UWU_User new_user = {
+            .username = req_username,
+            .status = msg_data[2 + username_length],
+        };
+
+        if (old_user->status == new_user.status) {
+          fprintf(stderr, "Warning: Can't change status to the same status!\n");
+        } else {
+
+          UWU_Bool transition_matrix[4][4] = {};
+          transition_matrix[DISCONNETED][DISCONNETED] = TRUE;
+
+          transition_matrix[ACTIVE][BUSY] = TRUE;
+          transition_matrix[BUSY][ACTIVE] = TRUE;
+
+          transition_matrix[INACTIVE][ACTIVE] = TRUE;
+          transition_matrix[INACTIVE][BUSY] = TRUE;
+
+          UWU_Bool valid_transition =
+              transition_matrix[old_user->status][new_user.status];
+          if (!valid_transition) {
+            fprintf(stderr, "Error: Invalid transition of user state!\n");
+            char err_data[] = {(char)ERROR, (char)INVALID_STATUS};
+
+            UWU_String err_response = {.data = err_data, .length = 2};
+            send_msg(c, &err_response);
+
+          } else {
+            fprintf(stderr, "Info: Changing status %.*s to %d",
+                    (int)new_user.username.length, new_user.username.data,
+                    new_user.status);
+
+            old_user->status = new_user.status;
+            old_user->username = req_username;
+            update_last_action(old_user);
+
+            UWU_String response =
+                create_changed_status_message(&resp_arena, &new_user);
+            broadcast_msg(&response);
+          }
+        }
       }
-
-      UWU_User new_user = {
-          .username = req_username,
-          .status = msg_data[2 + username_length],
-      };
-
-      if (old_user->status == new_user.status) {
-        fprintf(stderr, "Warning: Can't change status to the same status!\n");
-        return NULL;
-      }
-
-      UWU_Bool transition_matrix[4][4] = {};
-      transition_matrix[DISCONNETED][DISCONNETED] = TRUE;
-
-      transition_matrix[ACTIVE][BUSY] = TRUE;
-      transition_matrix[BUSY][ACTIVE] = TRUE;
-
-      transition_matrix[INACTIVE][ACTIVE] = TRUE;
-      transition_matrix[INACTIVE][BUSY] = TRUE;
-
-      UWU_Bool valid_transition =
-          transition_matrix[old_user->status][new_user.status];
-      if (!valid_transition) {
-        fprintf(stderr, "Error: Invalid transition of user state!\n");
-        char err_data[] = {(char)ERROR, (char)INVALID_STATUS};
-
-        UWU_String err_response = {.data = err_data, .length = 2};
-        send_msg(c, &err_response);
-        return NULL;
-      }
-      fprintf(stderr, "Info: Changing status %.*s to %d",
-              (int)new_user.username.length, new_user.username.data,
-              new_user.status);
-
-      old_user->status = new_user.status;
-      old_user->username = req_username;
-      update_last_action(old_user);
-
-      UWU_String response =
-          create_changed_status_message(&resp_arena, &new_user);
-      broadcast_msg(&response);
+      UWU_PanicIf(pthread_mutex_unlock(&UWU_STATE->active_users.mx) != 0,
+                  "Fatal: Can't lock the active_users mutex!");
     } break;
     case SEND_MESSAGE: {
       char username_length = msg_data[1];
@@ -566,6 +581,9 @@ void *message_handler(void *thread_info) {
         }
 
         UWU_String response = {.data = data, .length = data_length};
+
+        UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
+                    "Fatal: Can't lock the active_users mutex!");
         broadcast_msg(&response);
 
         for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
@@ -588,6 +606,8 @@ void *message_handler(void *thread_info) {
           }
         }
 
+        UWU_PanicIf(pthread_mutex_unlock(&UWU_STATE->active_users.mx) != 0,
+                    "Fatal: Can't unlock the active_users mutex!");
       } else {
 
         UWU_String *first = &conn_username;
@@ -608,64 +628,69 @@ void *message_handler(void *thread_info) {
         if (history == NULL) {
           UWU_PANIC("Fatal: No chat history found for key: %.*s",
                     combined.length, combined.data);
-          return NULL;
-        }
+        } else {
 
-        // UWU_String origin_user = {.data = conn_username->data,
-        //                           .length = conn_username->length};
+          // UWU_String origin_user = {.data = conn_username->data,
+          //                           .length = conn_username->length};
 
-        UWU_ChatEntry entry = {.content = content,
-                               .origin_username = conn_username};
+          UWU_ChatEntry entry = {.content = content,
+                                 .origin_username = conn_username};
 
-        UWU_ChatHistory_addMessage(history, &entry);
+          UWU_ChatHistory_addMessage(history, &entry);
 
-        size_t data_length = 4 + conn_username.length + message_length;
-        char *data = UWU_Arena_alloc(&resp_arena, data_length, err);
-        if (err != NO_ERROR) {
-          UWU_PANIC(
-              "Fatal: Failed to allocate memory for GOT_MESSAGE response!");
-          return NULL;
-        }
+          size_t data_length = 4 + conn_username.length + message_length;
+          char *data = UWU_Arena_alloc(&resp_arena, data_length, err);
+          if (err != NO_ERROR) {
+            UWU_PANIC(
+                "Fatal: Failed to allocate memory for GOT_MESSAGE response!");
+          } else {
 
-        data[0] = GOT_MESSAGE;
-        data[1] = conn_username.length;
+            data[0] = GOT_MESSAGE;
+            data[1] = conn_username.length;
 
-        for (size_t i = 0; i < conn_username.length; i++) {
-          data[2 + i] = UWU_String_charAt(&conn_username, i);
-        }
-
-        data[2 + conn_username.length] = message_length;
-        for (size_t i = 0; i < message_length; i++) {
-          data[2 + conn_username.length + 1 + i] =
-              UWU_String_charAt(&content, i);
-        }
-
-        // channel = combinación de conn_username y el req_username
-        for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
-             current != NULL; current = current->next) {
-
-          if (current->is_sentinel) {
-            continue;
-          }
-
-          UWU_String current_username = current->data.username;
-
-          if (UWU_String_equal(&current_username, &conn_username)) {
-            update_last_action(&current->data);
-          }
-
-          if (UWU_String_equal(&current_username, &conn_username) ||
-              UWU_String_equal(&current_username, &msg_username)) {
-
-            if (current->data.status == INACTIVE) {
-              current->data.status = ACTIVE;
-              UWU_String response =
-                  create_changed_status_message(&resp_arena, &current->data);
-              broadcast_msg(&response);
+            for (size_t i = 0; i < conn_username.length; i++) {
+              data[2 + i] = UWU_String_charAt(&conn_username, i);
             }
 
-            UWU_String response = {.data = data, .length = data_length};
-            send_msg(current->data.conn, &response);
+            data[2 + conn_username.length] = message_length;
+            for (size_t i = 0; i < message_length; i++) {
+              data[2 + conn_username.length + 1 + i] =
+                  UWU_String_charAt(&content, i);
+            }
+
+            UWU_PanicIf(pthread_mutex_lock(&UWU_STATE->active_users.mx) != 0,
+                        "Fatal: Can't lock the active_users mutex!");
+            // channel = combinación de conn_username y el req_username
+            for (struct UWU_UserListNode *current =
+                     UWU_STATE->active_users.start;
+                 current != NULL; current = current->next) {
+
+              if (current->is_sentinel) {
+                continue;
+              }
+
+              UWU_String current_username = current->data.username;
+
+              if (UWU_String_equal(&current_username, &conn_username)) {
+                update_last_action(&current->data);
+              }
+
+              if (UWU_String_equal(&current_username, &conn_username) ||
+                  UWU_String_equal(&current_username, &msg_username)) {
+
+                if (current->data.status == INACTIVE) {
+                  current->data.status = ACTIVE;
+                  UWU_String response = create_changed_status_message(
+                      &resp_arena, &current->data);
+                  broadcast_msg(&response);
+                }
+
+                UWU_String response = {.data = data, .length = data_length};
+                send_msg(current->data.conn, &response);
+              }
+            }
+            UWU_PanicIf(pthread_mutex_unlock(&UWU_STATE->active_users.mx) != 0,
+                        "Fatal: Can't unlock the active_users mutex!");
           }
         }
       }
@@ -675,108 +700,109 @@ void *message_handler(void *thread_info) {
       char username_length = msg_data[1];
       if (username_length <= 0) {
         fprintf(stderr, "Error: The username is too short!\n");
-        return NULL;
-      }
-
-      UWU_String req_username = {
-          .data = &msg_data[2],
-          .length = username_length,
-      };
-
-      if (UWU_String_equal(&req_username, &GROUP_CHAT_CHANNEL)) {
-        size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
-        char *data = UWU_Arena_alloc(&resp_arena, max_msg_size, err);
-        if (err != NO_ERROR) {
-          UWU_PANIC(
-              "Fatal: Arena couldn't allocate enough memory for message!");
-          return NULL;
-        }
-
-        data[0] = GOT_MESSAGES;
-        data[1] = UWU_STATE->group_chat.count;
-        size_t data_length = 2;
-
-        UWU_ChatHistory_Iterator iter =
-            UWU_ChatHistory_iter(&UWU_STATE->group_chat);
-        for (size_t i = iter.start; i < iter.end; i++) {
-          UWU_ChatEntry entry = UWU_ChatHistory_get(
-              &UWU_STATE->group_chat, i % UWU_STATE->group_chat.capacity);
-
-          data[data_length] = entry.origin_username.length;
-          data_length++;
-
-          for (size_t j = 0; j < entry.origin_username.length; j++) {
-            data[data_length] = UWU_String_getChar(&entry.origin_username, j);
-            data_length++;
-          }
-
-          data[data_length] = entry.content.length;
-          data_length++;
-
-          for (size_t j = 0; j < entry.content.length; j++) {
-            data[data_length] = UWU_String_getChar(&entry.content, j);
-            data_length++;
-          }
-        }
-
-        UWU_String response = {.data = data, .length = data_length};
-        send_msg(c, &response);
       } else {
-        UWU_String *first = &req_username;
-        UWU_String *other = &conn_username;
 
-        if (!UWU_String_firstGoesFirst(first, other)) {
-          first = &conn_username;
-          other = &req_username;
-        }
+        UWU_String req_username = {
+            .data = &msg_data[2],
+            .length = username_length,
+        };
 
-        UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
-        UWU_String combined = UWU_String_combineWithOther(&tmp, other);
-        UWU_String_freeWithMalloc(&tmp);
+        if (UWU_String_equal(&req_username, &GROUP_CHAT_CHANNEL)) {
+          size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+          char *data = UWU_Arena_alloc(&resp_arena, max_msg_size, err);
 
-        UWU_ChatHistory *chat =
-            hashmap_get(&UWU_STATE->chats, combined.data, combined.length);
-        if (NULL == chat) {
-          fprintf(stderr, "Error: Can't get chat associated with: %.*s",
-                  (int)combined.length, combined.data);
-          return NULL;
-        }
+          if (err != NO_ERROR) {
+            UWU_PANIC(
+                "Fatal: Arena couldn't allocate enough memory for message!");
+          } else {
+            data[0] = GOT_MESSAGES;
+            data[1] = UWU_STATE->group_chat.count;
+            size_t data_length = 2;
 
-        size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
-        char *data = UWU_Arena_alloc(&resp_arena, max_msg_size, err);
-        if (err != NO_ERROR) {
-          UWU_PANIC(
-              "Fatal: Arena couldn't allocate enough memory for message!");
-          return NULL;
-        }
+            UWU_ChatHistory_Iterator iter =
+                UWU_ChatHistory_iter(&UWU_STATE->group_chat);
+            for (size_t i = iter.start; i < iter.end; i++) {
+              UWU_ChatEntry entry = UWU_ChatHistory_get(
+                  &UWU_STATE->group_chat, i % UWU_STATE->group_chat.capacity);
 
-        data[0] = GOT_MESSAGES;
-        data[1] = chat->count;
-        size_t data_length = 2;
+              data[data_length] = entry.origin_username.length;
+              data_length++;
 
-        UWU_ChatHistory_Iterator iter = UWU_ChatHistory_iter(chat);
-        for (size_t i = iter.start; i < iter.end; i++) {
-          UWU_ChatEntry entry = UWU_ChatHistory_get(chat, i % chat->capacity);
+              for (size_t j = 0; j < entry.origin_username.length; j++) {
+                data[data_length] =
+                    UWU_String_getChar(&entry.origin_username, j);
+                data_length++;
+              }
 
-          data[data_length] = entry.origin_username.length;
-          data_length++;
+              data[data_length] = entry.content.length;
+              data_length++;
 
-          for (size_t j = 0; j < entry.origin_username.length; j++) {
-            data[data_length] = UWU_String_getChar(&entry.origin_username, j);
-            data_length++;
+              for (size_t j = 0; j < entry.content.length; j++) {
+                data[data_length] = UWU_String_getChar(&entry.content, j);
+                data_length++;
+              }
+            }
+
+            UWU_String response = {.data = data, .length = data_length};
+            send_msg(c, &response);
+          }
+        } else {
+          UWU_String *first = &req_username;
+          UWU_String *other = &conn_username;
+
+          if (!UWU_String_firstGoesFirst(first, other)) {
+            first = &conn_username;
+            other = &req_username;
           }
 
-          data[data_length] = entry.content.length;
-          data_length++;
+          UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+          UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+          UWU_String_freeWithMalloc(&tmp);
 
-          for (size_t j = 0; j < entry.content.length; j++) {
-            data[data_length] = UWU_String_getChar(&entry.content, j);
-            data_length++;
+          UWU_ChatHistory *chat =
+              hashmap_get(&UWU_STATE->chats, combined.data, combined.length);
+          if (NULL == chat) {
+            fprintf(stderr, "Error: Can't get chat associated with: %.*s",
+                    (int)combined.length, combined.data);
+            return NULL;
           }
-        }
 
-        UWU_String response = {.data = data, .length = data_length};
-        send_msg(c, &response);
+          size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+          char *data = UWU_Arena_alloc(&resp_arena, max_msg_size, err);
+          if (err != NO_ERROR) {
+            UWU_PANIC(
+                "Fatal: Arena couldn't allocate enough memory for message!");
+            return NULL;
+          }
+
+          data[0] = GOT_MESSAGES;
+          data[1] = chat->count;
+          size_t data_length = 2;
+
+          UWU_ChatHistory_Iterator iter = UWU_ChatHistory_iter(chat);
+          for (size_t i = iter.start; i < iter.end; i++) {
+            UWU_ChatEntry entry = UWU_ChatHistory_get(chat, i % chat->capacity);
+
+            data[data_length] = entry.origin_username.length;
+            data_length++;
+
+            for (size_t j = 0; j < entry.origin_username.length; j++) {
+              data[data_length] = UWU_String_getChar(&entry.origin_username, j);
+              data_length++;
+            }
+
+            data[data_length] = entry.content.length;
+            data_length++;
+
+            for (size_t j = 0; j < entry.content.length; j++) {
+              data[data_length] = UWU_String_getChar(&entry.content, j);
+              data_length++;
+            }
+          }
+
+          UWU_String response = {.data = data, .length = data_length};
+          send_msg(c, &response);
+        }
       }
 
     } break;
@@ -1092,20 +1118,20 @@ int main(int argc, char *argv[]) {
   }
   UWU_STATE = &state;
 
-  printf("Starting WS listener on %s/websocket\n", s_listen_on);
+  printf("Starting WS listener on %s\n", s_listen_on);
   mg_http_listen(&state.manager, s_listen_on, fn, NULL); // Create HTTP listener
   for (; !UWU_STATE->is_shutting_off;)
     mg_mgr_poll(&state.manager, 1000); // Infinite event loop
 
   pthread_join(id, NULL);
 
-  for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
-       current != NULL; current = current->next) {
-    if (current->is_sentinel) {
-      continue;
-    }
-    mg_close_conn(current->data.conn);
-  }
+  // for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+  //      current != NULL; current = current->next) {
+  //   if (current->is_sentinel) {
+  //     continue;
+  //   }
+  //   mg_close_conn(current->data.conn);
+  // }
 
   deinitialize_server_state(UWU_STATE);
   return 0;
