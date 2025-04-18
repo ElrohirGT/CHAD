@@ -28,7 +28,7 @@ typedef size_t *UWU_Err;
 static const UWU_Err NO_ERROR = 0;
 static const UWU_Err NOT_FOUND = (size_t *)1;
 static const UWU_Err MALLOC_FAILED = (size_t *)2;
-static const UWU_Err ARENA_ALLOC_FAILED = (size_t *)3;
+static const UWU_Err ARENA_ALLOC_NO_SPACE = (size_t *)3;
 static const UWU_Err NO_SPACE_LEFT = (size_t *)4;
 static const UWU_Err HASHMAP_INITIALIZATION_ERROR = (size_t *)5;
 
@@ -137,15 +137,36 @@ UWU_Arena UWU_Arena_init(size_t capacity, UWU_Err err) {
 // - err: The err parameter, refer to the start of lib for an explanation.
 //
 // Success: Returns a pointer to the first byte of the memory region requested.
-// Failure: Sets err equal to `UWU_ARENA_FAILED_ALLOCATION`.
-void *UWU_Arena_alloc(UWU_Arena *arena, size_t size, size_t *err) {
+// Failure: Sets err equal to `ARENA_ALLOC_NO_SPACE`.
+void *UWU_Arena_alloc(UWU_Arena *arena, size_t size, UWU_Err err) {
   UWU_Bool has_space = arena->size + size <= arena->capacity;
   if (!has_space) {
-    err = ARENA_ALLOC_FAILED;
+    err = ARENA_ALLOC_NO_SPACE;
     return NULL;
   } else {
     void *mem_start = &arena->data[arena->size];
     arena->size += size;
+    return mem_start;
+  }
+}
+
+// Tries to allocate all the remaining space on the arena.
+// This operation can fail since the arena may or may not have any space
+// available!
+//
+// - arena: The specific arena to use for allocation.
+// - err: The err parameter, refer to the start of lib for an explanation.
+//
+// Success: Returns a pointer to the first byte of the memory region requested.
+// Failure: Sets err equal to `ARENA_ALLOC_NO_SPACE`.
+void *UWU_Arena_allocRemaining(UWU_Arena *arena, UWU_Err err) {
+  UWU_Bool has_space = (arena->capacity - arena->size) != 0;
+  if (!has_space) {
+    err = ARENA_ALLOC_NO_SPACE;
+    return NULL;
+  } else {
+    void *mem_start = &arena->data[arena->size];
+    arena->size = arena->capacity;
     return mem_start;
   }
 }
