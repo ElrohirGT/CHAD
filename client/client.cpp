@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
+#include <cstddef>
 
 // ***********************************************
 // CONSTANTS
@@ -558,25 +559,30 @@ struct UserData {
 class UWUUserModel : public QAbstractListModel {
   Q_OBJECT
 public:
-  UWUUserModel(const std::vector<UserData> &users, QObject *parent = nullptr)
+  UWUUserModel(const UWU_UserList &users, QObject *parent = nullptr)
       : QAbstractListModel(parent), userDataList(users) {}
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override {
-    return parent.isValid() ? 0 : userDataList.size();
+    return parent.isValid() ? 0 : userDataList.length;
   }
 
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override {
     if (!index.isValid() || index.row() < 0 ||
-        index.row() >= userDataList.size()) {
+        index.row() >= userDataList.length) {
       return QVariant();
     }
 
-    const UserData &user = userDataList[index.row()];
+    const UWU_UserListNode *node = getNodeAt(index.row());
+    if (!node || node->is_sentinel) {
+      return QVariant();
+    }
+
+    const UWU_User &user = node->data;
 
     if (role == Qt::DisplayRole) {
       // Puedes retornar algo simple para el texto por defecto si es necesario
-      return user.name;
+      return QString::fromUtf8(user.username.data);
     } else if (role == Qt::UserRole + 1) {
       // Retornar los datos del usuario para el delegado
       return QVariant::fromValue(user);
@@ -585,7 +591,24 @@ public:
   }
 
 private:
-  std::vector<UserData> userDataList;
+  UWU_UserList userDataList;
+
+  const UWU_UserListNode *getNodeAt(int index) const {
+    const UWU_UserListNode *node = userDataList.start;
+    int currentIndex = 0;
+
+    while (node != nullptr && currentIndex <= index) {
+      if (!node->is_sentinel) {
+        if (currentIndex == index) {
+          return node;
+        }
+        ++currentIndex;
+      }
+      node = node->next;
+    }
+    
+    return nullptr;
+  }
 };
 
 class UWUUserDelegate : public QStyledItemDelegate {
@@ -707,12 +730,11 @@ int main(int argc, char *argv[]) {
   };
 
   bool isBusy = false;
-  char name[] = "Jose";
 
   // Crear la ventana principal
   MainWindow mainWindow;
 
-  UWUUserModel *userModel = new UWUUserModel(users);
+  UWUUserModel *userModel = new UWUUserModel(state.ActiveUsers);
   QListView *chatUsers = new QListView();
   chatUsers->setModel(userModel);
   chatUsers->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -761,7 +783,7 @@ int main(int argc, char *argv[]) {
 
   QLabel *ipLabel = new QLabel("127.0.0.1");
   ipLabel->setContentsMargins(10, 0, 0, 0);
-  QLabel *nameLabel = new QLabel(name);
+  QLabel *nameLabel = new QLabel(username);
   nameLabel->setContentsMargins(10, 0, 0, 0);
   nameLabel->setStyleSheet("font-size: 25px;");
 
