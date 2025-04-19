@@ -167,14 +167,14 @@ void deinit_ClientState(UWU_ClientState *state) {
   MG_INFO(("Cleaning current chat pointer..."));
   state->currentChat = NULL;
 
+  MG_INFO(("Cleaning DM Chat histories..."));
+  hashmap_destroy(&state->Chats);
+
   MG_INFO(("Cleaning Current User"));
   UWU_String_freeWithMalloc(&state->CurrentUser.username);
 
   MG_INFO(("Cleaning User List..."));
   UWU_UserList_deinit(&state->ActiveUsers);
-
-  MG_INFO(("Cleaning DM Chat histories..."));
-  hashmap_destroy(&state->Chats);
 
   MG_INFO(("Cleaning connection url..."));
   free(s_url);
@@ -234,6 +234,29 @@ void print_msg(UWU_String *msg, char *prefix, char *action) {
   printf(" ]\n");
 }
 
+void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
+
+  UWU_Err err = NO_ERROR;
+
+  UWU_UserListNode userNode = UWU_UserListNode_newWithValue(*user);
+  UWU_UserList_insertEnd(userList, &userNode, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
+  }
+
+  UWU_ChatHistory *userChat =
+      (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
+  if (userChat == NULL) {
+    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
+  }
+  *userChat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, user->username, err);
+
+  if (0 != hashmap_put(chats, user->username.data, user->username.length,
+                       userChat)) {
+    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
+  }
+};
+
 // *******************************************
 // CONTROLLER
 // *******************************************
@@ -260,9 +283,72 @@ public:
       int err_code = (int)msg.data[1];
       emit errorMsg(err_code);
     } break;
-    case LISTED_USERS:
-      /* code */
-      break;
+    case LISTED_USERS: {
+      // WARNING: This message will basically reset the UWU_STATE first before
+      // adding anything else.
+      UWU_Err err = NO_ERROR;
+
+      // DESTROYING OLD USER LIST AND CHATS.
+      hashmap_destroy(&UWU_STATE->Chats);
+      UWU_UserList_deinit(&UWU_STATE->ActiveUsers);
+
+      // CREATE USER LIST
+      UWU_STATE->ActiveUsers = UWU_UserList_init(err);
+      if (err != NO_ERROR) {
+        UWU_PANIC("Unable to allocate space for new user list");
+      }
+
+      // CREATE CHATS
+      if (0 != hashmap_create(8, &UWU_STATE->Chats)) {
+        UWU_PANIC("Unable to create chat list hashmap");
+      }
+
+      // ADDING GROUP CHAT
+      char *group_chat_name = (char *)malloc(sizeof(char));
+      if (group_chat_name == NULL) {
+        UWU_PANIC("Unable allocate space for group chat user");
+      }
+      *group_chat_name = '~';
+      UWU_String group_name = {.data = group_chat_name, .length = 1};
+      UWU_User group_user = {.username = group_name, .status = ACTIVE};
+
+      register_user(&group_user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
+
+      // INSERTING OTHER USERS
+      const int totalUsers = msg.data[1];
+      int lenUsernames = 0;
+      for (int i = 0; i < totalUsers; i++) {
+        int index = 2 + i + lenUsernames;
+        int usernameLen = msg.data[index];
+        char *usernameValue = (char *)malloc(usernameLen);
+        if (usernameValue == NULL) {
+          UWU_PANIC("Failed to allocate space for new user");
+        }
+        for (int j = 0; j < usernameLen; j++) {
+          int usernameIndex = index + 1;
+          usernameValue[j] = msg.data[usernameIndex + j];
+        }
+        UWU_ConnStatus userStatus =
+            (UWU_ConnStatus)msg.data[index + usernameLen + 1];
+
+        UWU_String usernameStr = {.data = usernameValue, .length = usernameLen};
+        UWU_User user = {.username = usernameStr, .status = userStatus};
+
+        printf("INSERTING %.*s\n", usernameLen, usernameValue);
+
+        // Ignore our own username.
+        if (UWU_String_equal(&UWU_STATE->CurrentUser.username, &usernameStr)) {
+          free(usernameValue);
+          continue;
+        }
+
+        register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
+
+        lenUsernames += usernameLen + 1;
+      }
+
+      printf("totalUsers: %d\n", UWU_STATE->ActiveUsers.length);
+    } break;
     case GOT_USER:
       /* code */
       break;
