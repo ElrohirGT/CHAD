@@ -248,23 +248,7 @@ UWU_ClientState init_ClientState(char *username, char *url, UWU_Err err) {
   UWU_String group_name = {.data = group_chat_name, .length = 1};
   UWU_User group_user = {.username = group_name, .status = ACTIVE};
 
-  UWU_UserListNode node = UWU_UserListNode_newWithValue(group_user);
-  UWU_UserList_insertEnd(&state.ActiveUsers, &node, err);
-  if (err != NO_ERROR) {
-    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
-    return state;
-  }
-
-  UWU_ChatHistory *ht = (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
-  if (ht == NULL) {
-    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
-    return state;
-  }
-  *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, group_name, err);
-
-  if (0 != hashmap_put(&state.Chats, group_name.data, group_name.length, ht)) {
-    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
-  }
+  register_user(&group_user, &state.ActiveUsers, &state.Chats);
 
   // SET CURRENT CHAT
   state.currentChat = NULL;
@@ -977,29 +961,30 @@ private:
 class ChatSendButton : public QPushButton {
   Q_OBJECT
 public:
-  ChatSendButton(QString *msg, ChatLineEdit *input, QString *selectedUser, QWidget *parent = nullptr) 
-  : QPushButton(parent), message(msg), inputField(input), selectedUser(selectedUser) {
+  ChatSendButton(QString *msg, ChatLineEdit *input, QString *selectedUser,
+                 QWidget *parent = nullptr)
+      : QPushButton(parent), message(msg), inputField(input),
+        selectedUser(selectedUser) {
     setMaximumWidth(100);
     setIcon(QIcon("icons/send-icond.png"));
     connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
-
   }
 
 private slots:
-void onSendClicked() {
-  if (message && selectedUser) {
-      UWU_String *UWU_SelectedUser = (UWU_String *) malloc(sizeof(UWU_String));
-      UWU_String *UWU_Message = (UWU_String *) malloc(sizeof(UWU_String));
+  void onSendClicked() {
+    if (message && selectedUser) {
+      UWU_String *UWU_SelectedUser = (UWU_String *)malloc(sizeof(UWU_String));
+      UWU_String *UWU_Message = (UWU_String *)malloc(sizeof(UWU_String));
 
       QByteArray usernameUtf8 = selectedUser->toUtf8();
-      char* copiedUsername = (char*) malloc(usernameUtf8.size());
+      char *copiedUsername = (char *)malloc(usernameUtf8.size());
       memcpy(copiedUsername, usernameUtf8.constData(), usernameUtf8.size());
 
       UWU_SelectedUser->data = copiedUsername;
       UWU_SelectedUser->length = usernameUtf8.size();
 
       QByteArray messageUtf8 = message->toUtf8();
-      char* copiedMessage = (char*) malloc(messageUtf8.size());
+      char *copiedMessage = (char *)malloc(messageUtf8.size());
       memcpy(copiedMessage, messageUtf8.constData(), messageUtf8.size());
 
       UWU_Message->data = copiedMessage;
@@ -1012,11 +997,11 @@ void onSendClicked() {
       free(UWU_SelectedUser);
       free(UWU_Message->data);
       free(UWU_Message);
-  }
-  if (inputField) {
+    }
+    if (inputField) {
       inputField->clear();
+    }
   }
-}
 
 private:
   QString *message;
@@ -1095,16 +1080,17 @@ int main(int argc, char *argv[]) {
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
 
-  QObject::connect(controller, &Controller::stateChanged, userModel, &UWUUserModel::refreshUserList);
+  QObject::connect(controller, &Controller::stateChanged, userModel,
+                   &UWUUserModel::refreshUserList);
 
   QString selectedUser;
-  QObject::connect(chatUsers, &QListView::clicked,
-    [&](const QModelIndex &index){
-      if (index.isValid()) {
-        selectedUser = index.data(UWUUserModel::UsernameRole).toString();
-        qDebug() << "Clicked Username:" << username;
-      }
-  });
+  QObject::connect(
+      chatUsers, &QListView::clicked, [&](const QModelIndex &index) {
+        if (index.isValid()) {
+          selectedUser = index.data(UWUUserModel::UsernameRole).toString();
+          qDebug() << "Clicked Username:" << username;
+        }
+      });
 
   UWUUserDelegate *userDelegate = new UWUUserDelegate();
   chatUsers->setItemDelegate(userDelegate);
@@ -1121,7 +1107,8 @@ int main(int argc, char *argv[]) {
   ChatLineEdit *chatInput = new ChatLineEdit(&msg);
 
   // Create button to send message
-  ChatSendButton *sendInput = new ChatSendButton(&msg, chatInput, &selectedUser);
+  ChatSendButton *sendInput =
+      new ChatSendButton(&msg, chatInput, &selectedUser);
 
   // Generates Widgets
   QWidget *mainWidget = new QWidget();
