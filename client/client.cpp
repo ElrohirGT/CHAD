@@ -696,6 +696,8 @@ public slots:
       status = BUSY;
     } else if (status == BUSY) {
       status = ACTIVE;
+    } else if (status == INACTIVE) {
+      status = BUSY;
     }
 
     externalStatus = status;
@@ -796,17 +798,17 @@ public:
     IpRole = Qt::UserRole + 2
   };
 
-  UWUUserModel(const UWU_UserList &users, QObject *parent = nullptr)
-      : QAbstractListModel(parent), userDataList(users) {}
+  UWUUserModel(UWU_ClientState &state, QObject *parent = nullptr)
+      : QAbstractListModel(parent), clientState(state) {}
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override {
-    return parent.isValid() ? 0 : userDataList.length;
+    return parent.isValid() ? 0 : clientState.ActiveUsers.length;
   }
 
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override {
     if (!index.isValid() || index.row() < 0 ||
-        index.row() >= userDataList.length) {
+        index.row() >= clientState.ActiveUsers.length) {
       return QVariant();
     }
 
@@ -827,11 +829,17 @@ public:
     return QVariant();
   }
 
+public slots:
+  void refreshUserList() {
+    beginResetModel();
+    endResetModel();
+  }
+
 private:
-  UWU_UserList userDataList;
+  UWU_ClientState &clientState;
 
   const UWU_UserListNode *getNodeAt(int index) const {
-    const UWU_UserListNode *node = userDataList.start;
+    const UWU_UserListNode *node = clientState.ActiveUsers.start;
     int currentIndex = 0;
 
     while (node != nullptr && currentIndex <= index) {
@@ -920,26 +928,51 @@ private:
 class ChatSendButton : public QPushButton {
   Q_OBJECT
 public:
-  ChatSendButton(QString *msg, ChatLineEdit *input, QWidget *parent = nullptr) : 
-    QPushButton(parent), message(msg), inputField(input) {
+  ChatSendButton(QString *msg, ChatLineEdit *input, QString *selectedUser, QWidget *parent = nullptr) : 
+    QPushButton(parent), message(msg), inputField(input), selectedUser(selectedUser) {
     setMaximumWidth(100);
     setIcon(QIcon("icons/send-icond.png"));
     connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
+
   }
 
 private slots:
-  void onSendClicked() {
-    if (message) {
+void onSendClicked() {
+  if (message && selectedUser) {
+      UWU_String *UWU_SelectedUser = (UWU_String *) malloc(sizeof(UWU_String));
+      UWU_String *UWU_Message = (UWU_String *) malloc(sizeof(UWU_String));
+
+      QByteArray usernameUtf8 = selectedUser->toUtf8();
+      char* copiedUsername = (char*) malloc(usernameUtf8.size());
+      memcpy(copiedUsername, usernameUtf8.constData(), usernameUtf8.size());
+
+      UWU_SelectedUser->data = copiedUsername;
+      UWU_SelectedUser->length = usernameUtf8.size();
+
+      QByteArray messageUtf8 = message->toUtf8();
+      char* copiedMessage = (char*) malloc(messageUtf8.size());
+      memcpy(copiedMessage, messageUtf8.constData(), messageUtf8.size());
+
+      UWU_Message->data = copiedMessage;
+      UWU_Message->length = messageUtf8.size();
+
+      send_message_handler(UWU_SelectedUser, UWU_Message);
       *message = "";
-    }
-    if (inputField) {
-      inputField->clear();
-    }
+
+      free(UWU_SelectedUser->data);
+      free(UWU_SelectedUser);
+      free(UWU_Message->data);
+      free(UWU_Message);
   }
+  if (inputField) {
+      inputField->clear();
+  }
+}
 
 private:
   QString *message;
   ChatLineEdit *inputField;
+  QString *selectedUser;
 };
 
 #include "client.moc"
@@ -999,7 +1032,7 @@ int main(int argc, char *argv[]) {
   // Crear la ventana principal
   MainWindow mainWindow;
 
-  UWUUserModel *userModel = new UWUUserModel(state.ActiveUsers);
+  UWUUserModel *userModel = new UWUUserModel(state);
   QListView *chatUsers = new QListView();
   chatUsers->setModel(userModel);
   chatUsers->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -1011,13 +1044,16 @@ int main(int argc, char *argv[]) {
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
 
+  QObject::connect(controller, &Controller::stateChanged, userModel, &UWUUserModel::refreshUserList);
+
+  QString selectedUser;
   QObject::connect(chatUsers, &QListView::clicked,
     [&](const QModelIndex &index){
         if (index.isValid()) {
-            QString username = index.data(UWUUserModel::UsernameRole).toString();
+            selectedUser = index.data(UWUUserModel::UsernameRole).toString();
             qDebug() << "Clicked Username:" << username;
-            // Aquí puedes realizar cualquier otra acción con el username
         }
+
   });
 
   UWUUserDelegate *userDelegate = new UWUUserDelegate();
@@ -1035,7 +1071,7 @@ int main(int argc, char *argv[]) {
   ChatLineEdit *chatInput = new ChatLineEdit(&msg);
 
   // Create button to send message
-  ChatSendButton *sendInput = new ChatSendButton(&msg, chatInput);
+  ChatSendButton *sendInput = new ChatSendButton(&msg, chatInput, &selectedUser);
 
   // Generates Widgets
   QWidget *mainWidget = new QWidget();
