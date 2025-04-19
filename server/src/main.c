@@ -283,7 +283,7 @@ static void *idle_detector(void *p) {
 
         time_t seconds_diff = difftime(now, current->data.last_action);
         UWU_ConnStatus status = current->data.status;
-        if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
+        if (seconds_diff >= IDLE_SECONDS_LIMIT && status == ACTIVE) {
           UWU_Arena_reset(&arena);
           MG_INFO(("Updating %.*s as INACTIVE!",
                    (int)current->data.username.length,
@@ -1206,6 +1206,16 @@ int main(int argc, char *argv[]) {
 
   pthread_join(timer_shutdown, NULL);
   pthread_join(idle_detector_pid, NULL);
+
+  // Closes all connections in the server...
+  for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
+       current != NULL; current = current->next) {
+    if (current->is_sentinel) {
+      continue;
+    }
+
+    mg_close_conn(current->data.conn);
+  }
 
   deinitialize_server_state(UWU_STATE);
   return 0;
