@@ -34,7 +34,6 @@
 #include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
-#include <cstddef>
 
 // ***********************************************
 // CONSTANTS
@@ -676,14 +675,16 @@ protected:
 class StatusButton : public QPushButton {
   Q_OBJECT
 public:
-StatusButton(UWU_ConnStatus &RefStatus, Controller *controller, QWidget *parent = nullptr)
+  StatusButton(UWU_ConnStatus &RefStatus, Controller *controller,
+               QWidget *parent = nullptr)
       : QPushButton(parent), status(ACTIVE), externalStatus(RefStatus) {
     status = externalStatus;
 
     setMaximumWidth(50);
     setContentsMargins(0, 0, 0, 100);
 
-    connect(controller, &Controller::stateChanged, this, &StatusButton::updateStatus);
+    connect(controller, &Controller::stateChanged, this,
+            &StatusButton::updateStatus);
     connect(this, &QPushButton::clicked, this, &StatusButton::clickSlot);
   }
 
@@ -702,7 +703,7 @@ public slots:
     update();
   }
 
-  void updateStatus(UWU_ClientState* newStatus) {
+  void updateStatus(UWU_ClientState *newStatus) {
     status = newStatus->CurrentUser.status;
     externalStatus = status;
     update();
@@ -971,7 +972,8 @@ int main(int argc, char *argv[]) {
                    [=](const QModelIndex &index) { chatUsers->update(index); });
 
   // Create button for handling busy status
-  StatusButton *statusButton = new StatusButton(state.CurrentUser.status, controller);
+  StatusButton *statusButton =
+      new StatusButton(state.CurrentUser.status, controller);
 
   // Generates Widgets
   QWidget *mainWidget = new QWidget();
