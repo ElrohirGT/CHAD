@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDebug>
+#include <QDialog>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -29,7 +30,6 @@
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
-#include <QDialog>
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
@@ -453,7 +453,7 @@ public:
         break;
       }
       if (UWU_STATE->currentChat == NULL) {
-        printf("No chat is selected to append the new message\n");
+        printf("No chat is selected to append the_ new message\n");
         break;
       }
 
@@ -499,6 +499,15 @@ public:
       free(chat);
     } break;
     case GOT_MESSAGES: {
+      if (UWU_STATE->CurrentUser.status == BUSY) {
+        break;
+      }
+      if (UWU_STATE->currentChat == NULL) {
+        printf("No chat is selected to append the new messages\n");
+        break;
+      }
+
+      // UWU_ChatHistory_clear(UWU_STATE->currentChat);
 
     } break;
     default:
@@ -1085,7 +1094,7 @@ class UWUMessageModel : public QAbstractListModel {
 
 public:
   UWUMessageModel(QObject *parent = nullptr)
-    : QAbstractListModel(parent), chatHistory(nullptr) {}
+      : QAbstractListModel(parent), chatHistory(nullptr) {}
 
   void setChatHistory(UWU_ChatHistory *history) {
     beginResetModel();
@@ -1099,18 +1108,25 @@ public:
     return chatHistory->count;
   }
 
-  QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override {
-    if (!chatHistory || !index.isValid() || index.row() >= (int)chatHistory->count)
+  QVariant data(const QModelIndex &index,
+                int role = Qt::DisplayRole) const override {
+    if (!chatHistory || !index.isValid() ||
+        index.row() >= (int)chatHistory->count)
       return QVariant();
 
     if (role == Qt::DisplayRole) {
       UWU_ChatEntry entry = chatHistory->messages[index.row()];
-      QString sender = QString::fromUtf8(entry.origin_username.data, entry.origin_username.length);
-      QString content = QString::fromUtf8(entry.content.data, entry.content.length);
+      QString sender = QString::fromUtf8(entry.origin_username.data,
+                                         entry.origin_username.length);
+      QString content =
+          QString::fromUtf8(entry.content.data, entry.content.length);
 
       qDebug() << "Message #" << index.row();
-      qDebug() << "Sender raw:" << QByteArray(entry.origin_username.data, entry.origin_username.length);
-      qDebug() << "Content raw:" << QByteArray(entry.content.data, entry.content.length);
+      qDebug() << "Sender raw:"
+               << QByteArray(entry.origin_username.data,
+                             entry.origin_username.length);
+      qDebug() << "Content raw:"
+               << QByteArray(entry.content.data, entry.content.length);
 
       return QString("%1: %2").arg(sender, content);
     }
@@ -1198,48 +1214,49 @@ int main(int argc, char *argv[]) {
   chatMessages->setModel(messageModel);
   chatMessages->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-  QObject::connect(controller, &Controller::stateChanged,
-                   [&](UWU_ClientState *newState) {
-                     userModel->refreshUserList();
-                     if (newState->currentChat) {
-                        qDebug() << "Total mensajes en chat:" << newState->currentChat->count;
-                       messageModel->setChatHistory(newState->currentChat);
-                     }
-                   });
+  QObject::connect(
+      controller, &Controller::stateChanged, [&](UWU_ClientState *newState) {
+        userModel->refreshUserList();
+        if (newState->currentChat) {
+          qDebug() << "Total mensajes en chat:" << newState->currentChat->count;
+          messageModel->setChatHistory(newState->currentChat);
+        }
+      });
 
-  QObject::connect(chatUsers, &QListView::clicked,
-    [&](const QModelIndex &index){
+  QObject::connect(
+      chatUsers, &QListView::clicked, [&](const QModelIndex &index) {
         if (index.isValid()) {
-            QString username = index.data(UWUUserModel::UsernameRole).toString();
-            qDebug() << "Clicked Username for messages:" << username;
+          QString username = index.data(UWUUserModel::UsernameRole).toString();
+          qDebug() << "Clicked Username for messages:" << username;
 
-            QByteArray usernameUtf8 = username.toUtf8();
-            UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(&UWU_STATE->Chats, usernameUtf8.constData(), usernameUtf8.size());
+          QByteArray usernameUtf8 = username.toUtf8();
+          UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(
+              &UWU_STATE->Chats, usernameUtf8.constData(), usernameUtf8.size());
 
-            if (history) {
-              messageModel->setChatHistory(history);
-              UWU_STATE->currentChat = history; 
+          if (history) {
+            messageModel->setChatHistory(history);
+            UWU_STATE->currentChat = history;
           } else {
-              qDebug() << "Chat history not found for user:" << username;
-              messageModel->setChatHistory(nullptr);
-              UWU_STATE->currentChat = nullptr;
+            qDebug() << "Chat history not found for user:" << username;
+            messageModel->setChatHistory(nullptr);
+            UWU_STATE->currentChat = nullptr;
           }
 
+          QString *contactUsername = new QString(username);
 
-            QString *contactUsername = new QString(username);
+          QByteArray contactUtf8Handler = contactUsername->toUtf8();
+          UWU_String contact;
+          contact.data = (char *)malloc(contactUtf8Handler.size());
+          memcpy(contact.data, contactUtf8Handler.constData(),
+                 contactUtf8Handler.size());
+          contact.length = contactUtf8Handler.size();
 
-            QByteArray contactUtf8Handler = contactUsername->toUtf8();
-            UWU_String contact;
-            contact.data = (char*) malloc(contactUtf8Handler.size());
-            memcpy(contact.data, contactUtf8Handler.constData(), contactUtf8Handler.size());
-            contact.length = contactUtf8Handler.size();
+          get_messages_handler(&contact);
 
-            get_messages_handler(&contact);
-
-            free(contact.data);
-            delete contactUsername; 
+          free(contact.data);
+          delete contactUsername;
         }
-  });
+      });
 
   UWUUserDelegate *userDelegate = new UWUUserDelegate();
   chatUsers->setItemDelegate(userDelegate);
@@ -1248,7 +1265,8 @@ int main(int argc, char *argv[]) {
                    [=](const QModelIndex &index) { chatUsers->update(index); });
 
   // Create button for handling busy status
-  StatusButton *statusButton = new StatusButton(state.CurrentUser.status, controller);
+  StatusButton *statusButton =
+      new StatusButton(state.CurrentUser.status, controller);
 
   QString msg;
   // Create text input
@@ -1259,14 +1277,15 @@ int main(int argc, char *argv[]) {
   ChatSendButton *sendInput =
       new ChatSendButton(&msg, chatInput, &selectedUser);
 
-  QObject::connect(chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
-      [&](const QModelIndex &current, const QModelIndex &previous){
-          if (current.isValid()) {
-              selectedUser = current.data(UWUUserModel::UsernameRole).toString();
-              qDebug() << "Selected user:" << selectedUser;
-          } else {
-              selectedUser.clear();
-          }
+  QObject::connect(
+      chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
+      [&](const QModelIndex &current, const QModelIndex &previous) {
+        if (current.isValid()) {
+          selectedUser = current.data(UWUUserModel::UsernameRole).toString();
+          qDebug() << "Selected user:" << selectedUser;
+        } else {
+          selectedUser.clear();
+        }
       });
 
   // Generates Widgets
@@ -1306,20 +1325,32 @@ int main(int argc, char *argv[]) {
   helpButton->setIcon(QIcon("icons/question-icon.jpg"));
   helpButton->setMaximumWidth(50);
   helpButton->setContentsMargins(0, 0, 0, 100);
-  
+
   //------------------------
   // Modal for help
   //------------------------
-  QObject::connect(helpButton, &QPushButton::clicked, [&](){
+  QObject::connect(helpButton, &QPushButton::clicked, [&]() {
     QDialog modal(mainWidget);
     modal.setWindowTitle("Help");
     modal.setModal(true);
     QLabel label("In this chat you can talk to other people connected to it!");
-    QLabel instrucctions("You can:\n1. Chat with another user: Just by selecting one of the chats on the left\nyou can send messages to that person");
-    QLabel instrucctions2("2. Use the general chat: This receives messages from all users connected for everyone to see");
-    QLabel instrucctions3("3. List connected users: At the left of the chat it apperas all the people that is using the chat, \n you can see their name and current status");
-    QLabel instrucctions4("4. Change status: You can change your status between ACTIVE (blue), BUSY (red), INACTIVE (yellow) and DISCONNECTED (gray)\n Your initial status is ACTIVE if there is no activy for a few seconds your status change to INACTIVE, to go back to ACTIVE you just have to send a message.\nIf you are ACTIVE or INACTIVE and you press the status button you change to BUSY status, to change from BUSY just press again the status button and you go back to ACTIVE.\n To be DISCONNECTED just close your chat session");
-
+    QLabel instrucctions(
+        "You can:\n1. Chat with another user: Just by selecting one of the "
+        "chats on the left\nyou can send messages to that person");
+    QLabel instrucctions2("2. Use the general chat: This receives messages "
+                          "from all users connected for everyone to see");
+    QLabel instrucctions3("3. List connected users: At the left of the chat it "
+                          "apperas all the people that is using the chat, \n "
+                          "you can see their name and current status");
+    QLabel instrucctions4(
+        "4. Change status: You can change your status between ACTIVE (blue), "
+        "BUSY (red), INACTIVE (yellow) and DISCONNECTED (gray)\n Your initial "
+        "status is ACTIVE if there is no activy for a few seconds your status "
+        "change to INACTIVE, to go back to ACTIVE you just have to send a "
+        "message.\nIf you are ACTIVE or INACTIVE and you press the status "
+        "button you change to BUSY status, to change from BUSY just press "
+        "again the status button and you go back to ACTIVE.\n To be "
+        "DISCONNECTED just close your chat session");
 
     QPushButton closeButton("Close");
     QVBoxLayout modalLayout(&modal);
@@ -1330,7 +1361,8 @@ int main(int argc, char *argv[]) {
     modalLayout.addWidget(&instrucctions4);
     modalLayout.addWidget(&closeButton);
 
-    QObject::connect(&closeButton, &QPushButton::clicked, &modal, &QDialog::accept);  
+    QObject::connect(&closeButton, &QPushButton::clicked, &modal,
+                     &QDialog::accept);
     modal.exec();
   });
 
