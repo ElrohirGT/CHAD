@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
+#include <QDialog>
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
@@ -1255,6 +1256,33 @@ int main(int argc, char *argv[]) {
   helpButton->setIcon(QIcon("icons/question-icon.jpg"));
   helpButton->setMaximumWidth(50);
   helpButton->setContentsMargins(0, 0, 0, 100);
+  
+  //------------------------
+  // Modal for help
+  //------------------------
+  QObject::connect(helpButton, &QPushButton::clicked, [&](){
+    QDialog modal(mainWidget);
+    modal.setWindowTitle("Help");
+    modal.setModal(true);
+    QLabel label("In this chat you can talk to other people connected to it!");
+    QLabel instrucctions("You can:\n1. Chat with another user: Just by selecting one of the chats on the left\nyou can send messages to that person");
+    QLabel instrucctions2("2. Use the general chat: This receives messages from all users connected for everyone to see");
+    QLabel instrucctions3("3. List connected users: At the left of the chat it apperas all the people that is using the chat, \n you can see their name and current status");
+    QLabel instrucctions4("4. Change status: You can change your status between ACTIVE (blue), BUSY (red), INACTIVE (yellow) and DISCONNECTED (gray)\n Your initial status is ACTIVE if there is no activy for a few seconds your status change to INACTIVE, to go back to ACTIVE you just have to send a message.\nIf you are ACTIVE or INACTIVE and you press the status button you change to BUSY status, to change from BUSY just press again the status button and you go back to ACTIVE.\n To be DISCONNECTED just close your chat session");
+
+
+    QPushButton closeButton("Close");
+    QVBoxLayout modalLayout(&modal);
+    modalLayout.addWidget(&label);
+    modalLayout.addWidget(&instrucctions);
+    modalLayout.addWidget(&instrucctions2);
+    modalLayout.addWidget(&instrucctions3);
+    modalLayout.addWidget(&instrucctions4);
+    modalLayout.addWidget(&closeButton);
+
+    QObject::connect(&closeButton, &QPushButton::clicked, &modal, &QDialog::accept);  
+    modal.exec();
+  });
 
   QPalette topPalette = nameLabel->palette();
   topPalette.setColor(QPalette::Window, QColor(31, 181, 25));
