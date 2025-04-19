@@ -44,6 +44,117 @@ static const size_t MAX_CHARACTERS_INPUT = 254;
 static const int UNRECOGNIZED_MSG = -1;
 
 // ***********************************************
+// UTILS
+// ***********************************************
+
+// Copy the data from a mongoose msg and returns it.
+// The user is responsable of freeing the data.
+UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
+  UWU_String str = {};
+
+  str.data = (char *)malloc(src->len);
+
+  if (src->buf == NULL) {
+    err = MALLOC_FAILED;
+    return str;
+  }
+
+  memcpy(str.data, src->buf, src->len);
+  str.length = src->len;
+
+  return str;
+}
+
+// Reads the IP from moongose and stores it in the global variable
+// ip if possible.
+void store_ip_addr(struct mg_addr *addr, char *buff, size_t buff_size) {
+  if (addr->is_ip6) {
+    // IPv6
+    const char *result = inet_ntop(AF_INET6, addr->ip, buff, buff_size);
+    if (result == NULL) {
+      UWU_PANIC("Unable to store ip addr v6");
+    }
+  } else {
+    // IPv4
+    const char *result = inet_ntop(AF_INET, addr->ip, buff, buff_size);
+    if (result == NULL) {
+      UWU_PANIC("Unable to store ip addr v6");
+    }
+  }
+
+  printf("Stored IP: %s\n", buff);
+  printf("Port: %u\n", ntohs(addr->port));
+}
+
+void print_msg(UWU_String *msg, char *prefix, char *action) {
+  printf("%s %s: [ ", prefix, action);
+  for (int i = 0; i < msg->length; i++) {
+    printf("%c (%d)", msg->data[i], msg->data[i]);
+    if (i + 1 < msg->length) {
+      printf(", ");
+    }
+  }
+  printf(" ]\n");
+}
+
+int remove_all(void *context, struct hashmap_element_s *const e) {
+  UWU_ChatHistory *data = (UWU_ChatHistory *)e->data;
+
+  UWU_ChatHistory_deinit(data);
+  free(data);
+  return -1;
+}
+
+int remove_if_matches(void *context, struct hashmap_element_s *const e) {
+  UWU_String *user_name = (UWU_String *)context;
+  UWU_String hash_key = {
+      .data = (char *)e->key,
+      .length = e->key_len,
+  };
+
+  if (UWU_String_equal(user_name, &hash_key)) {
+    UWU_ChatHistory *data = (UWU_ChatHistory *)e->data;
+
+    UWU_ChatHistory_deinit(data);
+    free(data);
+    return -1;
+  }
+
+  return 0;
+}
+
+// Does not copy the user data.
+void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
+
+  UWU_Err err = NO_ERROR;
+
+  UWU_UserListNode userNode = UWU_UserListNode_newWithValue(*user);
+  UWU_UserList_insertEnd(userList, &userNode, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
+  }
+
+  UWU_ChatHistory *userChat =
+      (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
+  if (userChat == NULL) {
+    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
+  }
+  *userChat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, user->username, err);
+
+  if (0 != hashmap_put(chats, user->username.data, user->username.length,
+                       userChat)) {
+    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
+  }
+};
+
+void unregister_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
+
+  hashmap_iterate_pairs(chats, remove_if_matches, &user->username);
+
+  UWU_UserList_removeByUsernameIfExists(userList, &user->username);
+};
+
+// ***********************************************
 // MODEL
 // ***********************************************
 
@@ -137,23 +248,7 @@ UWU_ClientState init_ClientState(char *username, char *url, UWU_Err err) {
   UWU_String group_name = {.data = group_chat_name, .length = 1};
   UWU_User group_user = {.username = group_name, .status = ACTIVE};
 
-  UWU_UserListNode node = UWU_UserListNode_newWithValue(group_user);
-  UWU_UserList_insertEnd(&state.ActiveUsers, &node, err);
-  if (err != NO_ERROR) {
-    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
-    return state;
-  }
-
-  UWU_ChatHistory *ht = (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
-  if (ht == NULL) {
-    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
-    return state;
-  }
-  *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, group_name, err);
-
-  if (0 != hashmap_put(&state.Chats, group_name.data, group_name.length, ht)) {
-    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
-  }
+  register_user(&group_user, &state.ActiveUsers, &state.Chats);
 
   // SET CURRENT CHAT
   state.currentChat = NULL;
@@ -179,92 +274,6 @@ void deinit_ClientState(UWU_ClientState *state) {
   MG_INFO(("Cleaning connection url..."));
   free(s_url);
 }
-
-// ***********************************************
-// UTILS
-// ***********************************************
-
-// Copy the data from a mongoose msg and returns it.
-// The user is responsable of freeing the data.
-UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
-  UWU_String str = {};
-
-  str.data = (char *)malloc(src->len);
-
-  if (src->buf == NULL) {
-    err = MALLOC_FAILED;
-    return str;
-  }
-
-  memcpy(str.data, src->buf, src->len);
-  str.length = src->len;
-
-  return str;
-}
-
-// Reads the IP from moongose and stores it in the global variable
-// ip if possible.
-void store_ip_addr(struct mg_addr *addr) {
-  if (addr->is_ip6) {
-    // IPv6
-    const char *result = inet_ntop(AF_INET6, addr->ip, ip, sizeof(ip));
-    if (result == NULL) {
-      UWU_PANIC("Unable to store ip addr v6");
-    }
-  } else {
-    // IPv4
-    const char *result = inet_ntop(AF_INET, addr->ip, ip, sizeof(ip));
-    if (result == NULL) {
-      UWU_PANIC("Unable to store ip addr v6");
-    }
-  }
-
-  printf("Stored IP: %s\n", ip);
-  printf("Port: %u\n", ntohs(addr->port));
-}
-
-void print_msg(UWU_String *msg, char *prefix, char *action) {
-  printf("%s %s: [ ", prefix, action);
-  for (int i = 0; i < msg->length; i++) {
-    printf("%c (%d)", msg->data[i], msg->data[i]);
-    if (i + 1 < msg->length) {
-      printf(", ");
-    }
-  }
-  printf(" ]\n");
-}
-
-void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
-
-  UWU_Err err = NO_ERROR;
-
-  UWU_UserListNode userNode = UWU_UserListNode_newWithValue(*user);
-  UWU_UserList_insertEnd(userList, &userNode, err);
-  if (err != NO_ERROR) {
-    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
-  }
-
-  UWU_ChatHistory *userChat =
-      (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
-  if (userChat == NULL) {
-    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
-  }
-  *userChat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, user->username, err);
-
-  if (0 != hashmap_put(chats, user->username.data, user->username.length,
-                       userChat)) {
-    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
-  }
-};
-
-void unregister_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
-
-  if (0 != hashmap_remove(chats, user->username.data, user->username.length)) {
-    UWU_PANIC("Unable to remove chat from history\n");
-  }
-
-  UWU_UserList_removeByUsernameIfExists(userList, &user->username);
-};
 
 // *******************************************
 // CONTROLLER
@@ -298,6 +307,9 @@ public:
       UWU_Err err = NO_ERROR;
 
       // DESTROYING OLD USER LIST AND CHATS.
+
+      // UNCOMMENT TO SHOW BUG
+      // hashmap_iterate_pairs(&UWU_STATE->Chats, remove_all, NULL); //
       hashmap_destroy(&UWU_STATE->Chats);
       UWU_UserList_deinit(&UWU_STATE->ActiveUsers);
 
@@ -343,14 +355,14 @@ public:
         UWU_String usernameStr = {.data = usernameValue, .length = usernameLen};
         UWU_User user = {.username = usernameStr, .status = userStatus};
 
-        printf("INSERTING %.*s\n", usernameLen, usernameValue);
-
         // Ignore our own username.
         if (UWU_String_equal(&UWU_STATE->CurrentUser.username, &usernameStr)) {
           free(usernameValue);
+          lenUsernames += usernameLen + 1;
           continue;
         }
 
+        printf("INSERTING %.*s\n", usernameLen, usernameValue);
         register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
 
         lenUsernames += usernameLen + 1;
@@ -361,9 +373,26 @@ public:
     case GOT_USER:
       /* code */
       break;
-    case REGISTERED_USER:
-      /* code */
-      break;
+    case REGISTERED_USER: {
+      UWU_Err err = NO_ERROR;
+      size_t username_length = msg.data[1];
+      UWU_ConnStatus req_status = (UWU_ConnStatus)msg.data[2 + username_length];
+      UWU_String req_username = {.data = &msg.data[2],
+                                 .length = username_length};
+      UWU_User *temp =
+          UWU_UserList_findByName(&UWU_STATE->ActiveUsers, &req_username);
+
+      if (temp == NULL) {
+        UWU_String usernameStr = UWU_String_copy(&req_username, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC("Unable to register new user");
+        }
+        UWU_User user = UWU_User{.username = usernameStr, .status = req_status};
+
+        register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
+        printf("INSERTING %.*s\n", username_length, req_username.data);
+      }
+    } break;
     case CHANGED_STATUS: {
       size_t username_length = msg.data[1];
       UWU_ConnStatus req_status = (UWU_ConnStatus)msg.data[2 + username_length];
@@ -398,6 +427,8 @@ public:
           }
         }
         if (should_delete) {
+          printf("DELETING %.*s \n", userToDelete->username.length,
+                 userToDelete->username.data);
           unregister_user(userToDelete, &UWU_STATE->ActiveUsers,
                           &UWU_STATE->Chats);
 
@@ -487,7 +518,7 @@ public slots:
       MG_ERROR(("%p %s", c->fd, (char *)ev_data));
     } else if (ev == MG_EV_WS_OPEN) {
       // When websocket handshake is successful, send message
-      store_ip_addr(&c->loc);
+      store_ip_addr(&c->loc, ip, sizeof(ip));
 
       // Add QT controller for updating IpLabel
       controller->updateIpLabel();
@@ -950,29 +981,30 @@ private:
 class ChatSendButton : public QPushButton {
   Q_OBJECT
 public:
-  ChatSendButton(QString *msg, ChatLineEdit *input, QString *selectedUser, QWidget *parent = nullptr) 
-  : QPushButton(parent), message(msg), inputField(input), selectedUser(selectedUser) {
+  ChatSendButton(QString *msg, ChatLineEdit *input, QString *selectedUser,
+                 QWidget *parent = nullptr)
+      : QPushButton(parent), message(msg), inputField(input),
+        selectedUser(selectedUser) {
     setMaximumWidth(100);
     setIcon(QIcon("icons/send-icond.png"));
     connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
-
   }
 
 private slots:
-void onSendClicked() {
-  if (message && selectedUser) {
-      UWU_String *UWU_SelectedUser = (UWU_String *) malloc(sizeof(UWU_String));
-      UWU_String *UWU_Message = (UWU_String *) malloc(sizeof(UWU_String));
+  void onSendClicked() {
+    if (message && selectedUser) {
+      UWU_String *UWU_SelectedUser = (UWU_String *)malloc(sizeof(UWU_String));
+      UWU_String *UWU_Message = (UWU_String *)malloc(sizeof(UWU_String));
 
       QByteArray usernameUtf8 = selectedUser->toUtf8();
-      char* copiedUsername = (char*) malloc(usernameUtf8.size());
+      char *copiedUsername = (char *)malloc(usernameUtf8.size());
       memcpy(copiedUsername, usernameUtf8.constData(), usernameUtf8.size());
 
       UWU_SelectedUser->data = copiedUsername;
       UWU_SelectedUser->length = usernameUtf8.size();
 
       QByteArray messageUtf8 = message->toUtf8();
-      char* copiedMessage = (char*) malloc(messageUtf8.size());
+      char *copiedMessage = (char *)malloc(messageUtf8.size());
       memcpy(copiedMessage, messageUtf8.constData(), messageUtf8.size());
 
       UWU_Message->data = copiedMessage;
@@ -985,11 +1017,11 @@ void onSendClicked() {
       free(UWU_SelectedUser);
       free(UWU_Message->data);
       free(UWU_Message);
-  }
-  if (inputField) {
+    }
+    if (inputField) {
       inputField->clear();
+    }
   }
-}
 
 private:
   QString *message;
@@ -1130,14 +1162,12 @@ int main(int argc, char *argv[]) {
             QString username = index.data(UWUUserModel::UsernameRole).toString();
             qDebug() << "Clicked Username for messages:" << username;
 
-            // Buscar el historial de chat en el mapa de Chats
             QByteArray usernameUtf8 = username.toUtf8();
             UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(&UWU_STATE->Chats, usernameUtf8.constData(), usernameUtf8.size());
 
             if (history) {
-              // Establecer el historial de chat en el modelo de mensajes
               messageModel->setChatHistory(history);
-              UWU_STATE->currentChat = history; // Asegúrate de que esto esté aquí
+              UWU_STATE->currentChat = history; 
           } else {
               qDebug() << "Chat history not found for user:" << username;
               messageModel->setChatHistory(nullptr);
@@ -1145,10 +1175,8 @@ int main(int argc, char *argv[]) {
           }
 
 
-            // Crear una copia de QString para pasar al handler
             QString *contactUsername = new QString(username);
 
-            // Convertir el QString a UWU_String para el handler
             QByteArray contactUtf8Handler = contactUsername->toUtf8();
             UWU_String contact;
             contact.data = (char*) malloc(contactUtf8Handler.size());
@@ -1157,9 +1185,8 @@ int main(int argc, char *argv[]) {
 
             get_messages_handler(&contact);
 
-            // Es importante liberar la memoria asignada para UWU_String después de usarla
             free(contact.data);
-            delete contactUsername; // Liberar la copia de QString
+            delete contactUsername; 
         }
   });
 
@@ -1178,7 +1205,8 @@ int main(int argc, char *argv[]) {
   QString selectedUser;
 
   // Create button to send message
-  ChatSendButton *sendInput = new ChatSendButton(&msg, chatInput, &selectedUser);
+  ChatSendButton *sendInput =
+      new ChatSendButton(&msg, chatInput, &selectedUser);
 
   QObject::connect(chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
       [&](const QModelIndex &current, const QModelIndex &previous){
