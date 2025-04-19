@@ -307,6 +307,9 @@ public:
       UWU_Err err = NO_ERROR;
 
       // DESTROYING OLD USER LIST AND CHATS.
+
+      // UNCOMMENT TO SHOW BUG
+      // hashmap_iterate_pairs(&UWU_STATE->Chats, remove_all, NULL); //
       hashmap_destroy(&UWU_STATE->Chats);
       UWU_UserList_deinit(&UWU_STATE->ActiveUsers);
 
