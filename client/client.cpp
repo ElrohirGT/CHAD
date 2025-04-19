@@ -484,14 +484,16 @@ public:
       UWU_ChatHistory *history = NULL;
 
       if (UWU_String_equal(&UWU_STATE->CurrentUser.username, &contact)) {
+        // If its from the current user append it to the current chat.
         history = UWU_STATE->currentChat;
       } else {
-        history = (UWU_ChatHistory *)hashmap_get(
-            &UWU_STATE->Chats, &UWU_STATE->currentChat->channel_name.data,
-            UWU_STATE->currentChat->channel_name.length);
+        // Search for the contact chat.
+        history = (UWU_ChatHistory *)hashmap_get(&UWU_STATE->Chats,
+                                                 contact.data, contact.length);
       }
-      if (history != NULL) {
+      if (history == NULL) {
         printf("No matched entry to store the incoming msg. Dismising");
+      } else {
         UWU_ChatHistory_addMessage(history, &entry);
       }
 
@@ -506,7 +508,7 @@ public:
         printf("No chat is selected to append the new messages\n");
         break;
       }
-
+      // Clearing messages.
       // UWU_ChatHistory_clear(UWU_STATE->currentChat);
 
     } break;
@@ -1241,7 +1243,7 @@ int main(int argc, char *argv[]) {
             messageModel->setChatHistory(nullptr);
             UWU_STATE->currentChat = nullptr;
           }
-          
+
           get_messages_handler(&UWU_STATE->currentChat->channel_name);
         }
       });
