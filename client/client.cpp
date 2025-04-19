@@ -97,6 +97,33 @@ void print_msg(UWU_String *msg, char *prefix, char *action) {
   printf(" ]\n");
 }
 
+int remove_all(void *context, struct hashmap_element_s *const e) {
+  UWU_ChatHistory *data = (UWU_ChatHistory *)e->data;
+
+  UWU_ChatHistory_deinit(data);
+  free(data);
+  return -1;
+}
+
+int remove_if_matches(void *context, struct hashmap_element_s *const e) {
+  UWU_String *user_name = (UWU_String *)context;
+  UWU_String hash_key = {
+      .data = (char *)e->key,
+      .length = e->key_len,
+  };
+
+  if (UWU_String_equal(user_name, &hash_key)) {
+    UWU_ChatHistory *data = (UWU_ChatHistory *)e->data;
+
+    UWU_ChatHistory_deinit(data);
+    free(data);
+    return -1;
+  }
+
+  return 0;
+}
+
+// Does not copy the user data.
 void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
 
   UWU_Err err = NO_ERROR;
@@ -122,9 +149,7 @@ void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
 
 void unregister_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
 
-  if (0 != hashmap_remove(chats, user->username.data, user->username.length)) {
-    UWU_PANIC("Unable to remove chat from history\n");
-  }
+  hashmap_iterate_pairs(chats, remove_if_matches, &user->username);
 
   UWU_UserList_removeByUsernameIfExists(userList, &user->username);
 };
@@ -343,14 +368,14 @@ public:
         UWU_String usernameStr = {.data = usernameValue, .length = usernameLen};
         UWU_User user = {.username = usernameStr, .status = userStatus};
 
-        printf("INSERTING %.*s\n", usernameLen, usernameValue);
-
         // Ignore our own username.
         if (UWU_String_equal(&UWU_STATE->CurrentUser.username, &usernameStr)) {
           free(usernameValue);
+          lenUsernames += usernameLen + 1;
           continue;
         }
 
+        printf("INSERTING %.*s\n", usernameLen, usernameValue);
         register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
 
         lenUsernames += usernameLen + 1;
@@ -398,6 +423,8 @@ public:
           }
         }
         if (should_delete) {
+          printf("DELETING %.*s \n", userToDelete->username.length,
+                 userToDelete->username.data);
           unregister_user(userToDelete, &UWU_STATE->ActiveUsers,
                           &UWU_STATE->Chats);
 
