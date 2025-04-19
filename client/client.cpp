@@ -34,8 +34,7 @@
 #include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <vector>
+#include <cstddef>
 
 // ***********************************************
 // CONSTANTS
@@ -384,7 +383,7 @@ public slots:
   // It instantly emits a signal to announce UWU state has changed.
   void onMsgProcessed() {
     printf("MSG PROCESSED...\n");
-    emit stateChanged();
+    emit stateChanged(UWU_STATE);
   }
 
   void onErrorMsg(int err) {
@@ -414,7 +413,7 @@ public slots:
 
 signals:
   // Signal to announce UWU_STATE has changed.
-  void stateChanged();
+  void stateChanged(UWU_ClientState *newState);
   void finished();
   // ERRORS
   // The message received from the server does not figure out on the protocol
@@ -552,24 +551,38 @@ protected:
 };
 
 // Class for the status button
-class ActiveButton : public QPushButton {
+class StatusButton : public QPushButton {
   Q_OBJECT
 public:
-  ActiveButton(bool &RefStatus, QWidget *parent = nullptr)
-      : QPushButton(parent), status(false), externalStatus(RefStatus) {
+StatusButton(UWU_ConnStatus &RefStatus, Controller *controller, QWidget *parent = nullptr)
+      : QPushButton(parent), status(ACTIVE), externalStatus(RefStatus) {
+    status = externalStatus;
+
     setMaximumWidth(50);
     setContentsMargins(0, 0, 0, 100);
 
-    connect(this, &QPushButton::clicked, this, &ActiveButton::clickSlot);
+    connect(controller, &Controller::stateChanged, this, &StatusButton::updateStatus);
+    connect(this, &QPushButton::clicked, this, &StatusButton::clickSlot);
   }
 
 public slots:
   // Change to opposite status set status true for Busy
   void clickSlot() {
-    status = !status;                // change class status
-    qDebug() << "Status:" << status; // Debug print
-    externalStatus = status;         // change the status from outside the class
-    qDebug() << "main status:" << externalStatus; // Debug print
+    if (status == ACTIVE) {
+      status = BUSY;
+    } else if (status == BUSY) {
+      status = ACTIVE;
+    }
+
+    externalStatus = status;
+
+    change_status_handler(status);
+    update();
+  }
+
+  void updateStatus(UWU_ClientState* newStatus) {
+    status = newStatus->CurrentUser.status;
+    externalStatus = status;
     update();
   }
 
@@ -580,7 +593,15 @@ protected:
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    QColor circleColor = status ? QColor(0, 255, 0) : QColor(255, 0, 0);
+    QColor circleColor;
+
+    if (status == ACTIVE) {
+      circleColor = QColor(0, 0, 255);
+    } else if (status == BUSY) {
+      circleColor = QColor(255, 0, 0);
+    } else {
+      circleColor = QColor(255, 255, 0);
+    }
     painter.setBrush(circleColor);
     painter.setPen(Qt::NoPen);
 
@@ -593,8 +614,9 @@ protected:
 
   // Class attributes
 private:
-  bool status;
-  bool &externalStatus;
+  UWU_ConnStatus status;
+  UWU_ConnStatus &externalStatus;
+  Controller *controller;
 };
 
 class UWUUserQT : public QWidget {
@@ -803,7 +825,7 @@ int main(int argc, char *argv[]) {
   // LAYOUT INITIALIZATION
   // **********************
 
-  bool isBusy = false;
+  int isBusy = 30;
 
   // Crear la ventana principal
   MainWindow mainWindow;
@@ -827,7 +849,7 @@ int main(int argc, char *argv[]) {
                    [=](const QModelIndex &index) { chatUsers->update(index); });
 
   // Create button for handling busy status
-  ActiveButton *activeButton = new ActiveButton(isBusy);
+  StatusButton *statusButton = new StatusButton(state.CurrentUser.status, controller);
 
   // Generates Widgets
   QWidget *mainWidget = new QWidget();
@@ -868,9 +890,6 @@ int main(int argc, char *argv[]) {
   helpButton->setIcon(QIcon("icons/question-icon.jpg"));
   helpButton->setMaximumWidth(50);
   helpButton->setContentsMargins(0, 0, 0, 100);
-  QPushButton *statusButton = new QPushButton();
-  statusButton->setMaximumWidth(50);
-  statusButton->setContentsMargins(0, 0, 0, 100);
 
   QPalette topPalette = nameLabel->palette();
   topPalette.setColor(QPalette::Window, QColor(31, 181, 25));
@@ -882,7 +901,7 @@ int main(int argc, char *argv[]) {
   nameWidget->setLayout(nameLayout);
 
   topLayout->addWidget(nameWidget);
-  topLayout->addWidget(activeButton);
+  topLayout->addWidget(statusButton);
   topLayout->addWidget(helpButton);
   topWidget->setLayout(topLayout);
 
