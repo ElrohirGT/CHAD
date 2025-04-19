@@ -448,8 +448,56 @@ public:
         }
       }
     } break;
-    case GOT_MESSAGE:
-      break;
+    case GOT_MESSAGE: {
+      if (UWU_STATE->CurrentUser.status == BUSY) {
+        break;
+      }
+      if (UWU_STATE->currentChat == NULL) {
+        printf("No chat is selected to append the new message\n");
+        break;
+      }
+
+      UWU_Err err = NO_ERROR;
+      size_t username_length = msg.data[1];
+      size_t msg_length = msg.data[2 + username_length];
+      char *username = (char *)malloc(username_length);
+      char *chat = (char *)malloc(msg_length);
+
+      if (username == NULL || chat == NULL) {
+        UWU_PANIC("Unable to allocate memory for new incoming messages");
+      }
+
+      for (size_t i = 0; i < username_length; i++) {
+        username[i] = msg.data[2 + i];
+      }
+
+      for (size_t i = 0; i < msg_length; i++) {
+        chat[i] = msg.data[2 + username_length + 1 + i];
+      }
+
+      UWU_String contact = {.data = username, .length = username_length};
+      UWU_String content = {.data = chat, .length = msg_length};
+
+      UWU_ChatEntry entry =
+          UWU_ChatEntry{.content = content, .origin_username = contact};
+
+      UWU_ChatHistory *history = NULL;
+
+      if (UWU_String_equal(&UWU_STATE->CurrentUser.username, &contact)) {
+        history = UWU_STATE->currentChat;
+      } else {
+        history = (UWU_ChatHistory *)hashmap_get(
+            &UWU_STATE->Chats, &UWU_STATE->currentChat->channel_name.data,
+            UWU_STATE->currentChat->channel_name.length);
+      }
+      if (history != NULL) {
+        printf("No matched entry to store the incoming msg. Dismising");
+        UWU_ChatHistory_addMessage(history, &entry);
+      }
+
+      free(username);
+      free(chat);
+    } break;
     case GOT_MESSAGES:
       break;
     default:
