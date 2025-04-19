@@ -461,6 +461,7 @@ struct UWU_UserListNode {
 // Creates a new `UWU_UserListNode` with `data`.
 //
 // Both `next` and `previous` pointers are set to `NULL`.
+// It does not own data.
 struct UWU_UserListNode UWU_UserListNode_newWithValue(UWU_User data) {
   struct UWU_UserListNode node = {
       .is_sentinel = FALSE,
@@ -743,6 +744,7 @@ typedef struct {
 } UWU_ChatHistory;
 
 // Creates a new ChatHistory with the specified capacity for messages.
+// It does not own the channel_name value.
 UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_String channel_name,
                                      UWU_Err err) {
   UWU_ChatHistory ht = {};
@@ -775,6 +777,7 @@ void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) {
 //
 // If the ChatHistory is already full then it wraps around and adds it to the
 // back.
+// It copies the entry given.
 void UWU_ChatHistory_addMessage(UWU_ChatHistory *hist, UWU_ChatEntry *entry) {
   UWU_Err err = NO_ERROR;
   size_t next_idx = hist->next_idx % hist->capacity;
