@@ -12,6 +12,7 @@
 #include <QListView>
 #include <QMainWindow>
 #include <QModelIndex>
+#include <QMouseEvent>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QObject>
@@ -28,7 +29,6 @@
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
-#include <QMouseEvent>
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
@@ -815,10 +815,7 @@ private:
 class UWUUserModel : public QAbstractListModel {
   Q_OBJECT
 public:
-  enum UserRoles {
-    UsernameRole = Qt::UserRole + 1,
-    IpRole = Qt::UserRole + 2
-  };
+  enum UserRoles { UsernameRole = Qt::UserRole + 1, IpRole = Qt::UserRole + 2 };
 
   UWUUserModel(const UWU_UserList &users, QObject *parent = nullptr)
       : QAbstractListModel(parent), userDataList(users) {}
@@ -925,7 +922,8 @@ public:
 class ChatLineEdit : public QLineEdit {
   Q_OBJECT
 public:
-  ChatLineEdit(QString *msg, QWidget *parent = nullptr) : QLineEdit(parent), message(msg) {
+  ChatLineEdit(QString *msg, QWidget *parent = nullptr)
+      : QLineEdit(parent), message(msg) {
     setPlaceholderText("Write a message");
     connect(this, &QLineEdit::textChanged, this, &ChatLineEdit::onTextChanged);
   }
@@ -944,8 +942,8 @@ private:
 class ChatSendButton : public QPushButton {
   Q_OBJECT
 public:
-  ChatSendButton(QString *msg, ChatLineEdit *input, QWidget *parent = nullptr) : 
-    QPushButton(parent), message(msg), inputField(input) {
+  ChatSendButton(QString *msg, ChatLineEdit *input, QWidget *parent = nullptr)
+      : QPushButton(parent), message(msg), inputField(input) {
     setMaximumWidth(100);
     setIcon(QIcon("icons/send-icond.png"));
     connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
@@ -1037,14 +1035,14 @@ int main(int argc, char *argv[]) {
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
 
-  QObject::connect(chatUsers, &QListView::clicked,
-    [&](const QModelIndex &index){
+  QObject::connect(
+      chatUsers, &QListView::clicked, [&](const QModelIndex &index) {
         if (index.isValid()) {
-            QString username = index.data(UWUUserModel::UsernameRole).toString();
-            qDebug() << "Clicked Username:" << username;
-            // Aquí puedes realizar cualquier otra acción con el username
+          QString username = index.data(UWUUserModel::UsernameRole).toString();
+          qDebug() << "Clicked Username:" << username;
+          // Aquí puedes realizar cualquier otra acción con el username
         }
-  });
+      });
 
   UWUUserDelegate *userDelegate = new UWUUserDelegate();
   chatUsers->setItemDelegate(userDelegate);
