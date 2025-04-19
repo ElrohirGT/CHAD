@@ -257,6 +257,15 @@ void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
   }
 };
 
+void unregister_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
+
+  if (0 != hashmap_remove(chats, user->username.data, user->username.length)) {
+    UWU_PANIC("Unable to remove chat from history\n");
+  }
+
+  UWU_UserList_removeByUsernameIfExists(userList, &user->username);
+};
+
 // *******************************************
 // CONTROLLER
 // *******************************************
@@ -367,6 +376,8 @@ public:
                UWU_STATE->CurrentUser.username.data, (int)req_status);
       } else {
         UWU_Bool found_it = FALSE;
+        UWU_Bool should_delete = FALSE;
+        UWU_User *userToDelete = NULL;
         for (struct UWU_UserListNode *current = UWU_STATE->ActiveUsers.start;
              current != NULL; current = current->next) {
           if (current->is_sentinel) {
@@ -375,14 +386,24 @@ public:
 
           if (UWU_String_equal(&current->data.username, &req_username)) {
             found_it = TRUE;
-            current->data.status = req_status;
-            printf("CHANGING %.*s STATUS TO : %d\n",
-                   current->data.username.length, current->data.username.data,
-                   (int)req_status);
+            if (req_status == DISCONNETED) {
+              should_delete = TRUE;
+              userToDelete = &current->data;
+            } else {
+              current->data.status = req_status;
+              printf("CHANGING %.*s STATUS TO : %d\n",
+                     current->data.username.length, current->data.username.data,
+                     (int)req_status);
+            }
           }
         }
+        if (should_delete) {
+          unregister_user(userToDelete, &UWU_STATE->ActiveUsers,
+                          &UWU_STATE->Chats);
 
-        if (!found_it) {
+          printf("User removed, totalUsers: %d\n",
+                 UWU_STATE->ActiveUsers.length);
+        } else if (!found_it) {
           UWU_Err err = NO_ERROR;
           UWU_User user = {.username = req_username, .status = req_status};
           struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
@@ -454,6 +475,9 @@ public slots:
       c->is_hexdumping = 1;
     } else if (ev == MG_EV_CLOSE) {
       printf("Closing connection\n");
+      printf("This may happened due if the client was unable to connect to the "
+             "server.\n");
+      emit controller->finished();
     } else if (ev == MG_EV_CONNECT && mg_url_is_ssl(s_url)) {
       // On connection established
       struct mg_tls_opts opts = {.name = mg_url_host(s_url)};
@@ -986,6 +1010,8 @@ int main(int argc, char *argv[]) {
   QObject::connect(controller, &Controller::finished, thread, &QThread::quit);
   QObject::connect(controller, &Controller::finished, controller,
                    &Controller::deleteLater);
+  QObject::connect(controller, &Controller::finished, &app,
+                   &QCoreApplication::quit);
   QObject::connect(thread, &QThread::finished, thread, &QThread::deleteLater);
   QObject::connect(&app, &QCoreApplication::aboutToQuit,
                    [controller]() { controller->stop(); });
