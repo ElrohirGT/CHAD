@@ -1241,20 +1241,8 @@ int main(int argc, char *argv[]) {
             messageModel->setChatHistory(nullptr);
             UWU_STATE->currentChat = nullptr;
           }
-
-          QString *contactUsername = new QString(username);
-
-          QByteArray contactUtf8Handler = contactUsername->toUtf8();
-          UWU_String contact;
-          contact.data = (char *)malloc(contactUtf8Handler.size());
-          memcpy(contact.data, contactUtf8Handler.constData(),
-                 contactUtf8Handler.size());
-          contact.length = contactUtf8Handler.size();
-
-          get_messages_handler(&contact);
-
-          free(contact.data);
-          delete contactUsername;
+          
+          get_messages_handler(&UWU_STATE->currentChat->channel_name);
         }
       });
 
