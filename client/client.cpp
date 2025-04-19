@@ -44,6 +44,92 @@ static const size_t MAX_CHARACTERS_INPUT = 254;
 static const int UNRECOGNIZED_MSG = -1;
 
 // ***********************************************
+// UTILS
+// ***********************************************
+
+// Copy the data from a mongoose msg and returns it.
+// The user is responsable of freeing the data.
+UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
+  UWU_String str = {};
+
+  str.data = (char *)malloc(src->len);
+
+  if (src->buf == NULL) {
+    err = MALLOC_FAILED;
+    return str;
+  }
+
+  memcpy(str.data, src->buf, src->len);
+  str.length = src->len;
+
+  return str;
+}
+
+// Reads the IP from moongose and stores it in the global variable
+// ip if possible.
+void store_ip_addr(struct mg_addr *addr, char *buff, size_t buff_size) {
+  if (addr->is_ip6) {
+    // IPv6
+    const char *result = inet_ntop(AF_INET6, addr->ip, buff, buff_size);
+    if (result == NULL) {
+      UWU_PANIC("Unable to store ip addr v6");
+    }
+  } else {
+    // IPv4
+    const char *result = inet_ntop(AF_INET, addr->ip, buff, buff_size);
+    if (result == NULL) {
+      UWU_PANIC("Unable to store ip addr v6");
+    }
+  }
+
+  printf("Stored IP: %s\n", buff);
+  printf("Port: %u\n", ntohs(addr->port));
+}
+
+void print_msg(UWU_String *msg, char *prefix, char *action) {
+  printf("%s %s: [ ", prefix, action);
+  for (int i = 0; i < msg->length; i++) {
+    printf("%c (%d)", msg->data[i], msg->data[i]);
+    if (i + 1 < msg->length) {
+      printf(", ");
+    }
+  }
+  printf(" ]\n");
+}
+
+void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
+
+  UWU_Err err = NO_ERROR;
+
+  UWU_UserListNode userNode = UWU_UserListNode_newWithValue(*user);
+  UWU_UserList_insertEnd(userList, &userNode, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
+  }
+
+  UWU_ChatHistory *userChat =
+      (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
+  if (userChat == NULL) {
+    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
+  }
+  *userChat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, user->username, err);
+
+  if (0 != hashmap_put(chats, user->username.data, user->username.length,
+                       userChat)) {
+    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
+  }
+};
+
+void unregister_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
+
+  if (0 != hashmap_remove(chats, user->username.data, user->username.length)) {
+    UWU_PANIC("Unable to remove chat from history\n");
+  }
+
+  UWU_UserList_removeByUsernameIfExists(userList, &user->username);
+};
+
+// ***********************************************
 // MODEL
 // ***********************************************
 
@@ -179,92 +265,6 @@ void deinit_ClientState(UWU_ClientState *state) {
   MG_INFO(("Cleaning connection url..."));
   free(s_url);
 }
-
-// ***********************************************
-// UTILS
-// ***********************************************
-
-// Copy the data from a mongoose msg and returns it.
-// The user is responsable of freeing the data.
-UWU_String UWU_String_fromMongoose(mg_str *src, UWU_Err err) {
-  UWU_String str = {};
-
-  str.data = (char *)malloc(src->len);
-
-  if (src->buf == NULL) {
-    err = MALLOC_FAILED;
-    return str;
-  }
-
-  memcpy(str.data, src->buf, src->len);
-  str.length = src->len;
-
-  return str;
-}
-
-// Reads the IP from moongose and stores it in the global variable
-// ip if possible.
-void store_ip_addr(struct mg_addr *addr) {
-  if (addr->is_ip6) {
-    // IPv6
-    const char *result = inet_ntop(AF_INET6, addr->ip, ip, sizeof(ip));
-    if (result == NULL) {
-      UWU_PANIC("Unable to store ip addr v6");
-    }
-  } else {
-    // IPv4
-    const char *result = inet_ntop(AF_INET, addr->ip, ip, sizeof(ip));
-    if (result == NULL) {
-      UWU_PANIC("Unable to store ip addr v6");
-    }
-  }
-
-  printf("Stored IP: %s\n", ip);
-  printf("Port: %u\n", ntohs(addr->port));
-}
-
-void print_msg(UWU_String *msg, char *prefix, char *action) {
-  printf("%s %s: [ ", prefix, action);
-  for (int i = 0; i < msg->length; i++) {
-    printf("%c (%d)", msg->data[i], msg->data[i]);
-    if (i + 1 < msg->length) {
-      printf(", ");
-    }
-  }
-  printf(" ]\n");
-}
-
-void register_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
-
-  UWU_Err err = NO_ERROR;
-
-  UWU_UserListNode userNode = UWU_UserListNode_newWithValue(*user);
-  UWU_UserList_insertEnd(userList, &userNode, err);
-  if (err != NO_ERROR) {
-    UWU_PANIC("Fatal: Failed to insert Group chat to the UserCollection!\n");
-  }
-
-  UWU_ChatHistory *userChat =
-      (UWU_ChatHistory *)malloc(sizeof(UWU_ChatHistory));
-  if (userChat == NULL) {
-    UWU_PANIC("Fatal: Failed to allocate memory for groupal chat history\n");
-  }
-  *userChat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, user->username, err);
-
-  if (0 != hashmap_put(chats, user->username.data, user->username.length,
-                       userChat)) {
-    UWU_PANIC("Fatal: Error creating a chat entry for the group chat.");
-  }
-};
-
-void unregister_user(UWU_User *user, UWU_UserList *userList, hashmap_s *chats) {
-
-  if (0 != hashmap_remove(chats, user->username.data, user->username.length)) {
-    UWU_PANIC("Unable to remove chat from history\n");
-  }
-
-  UWU_UserList_removeByUsernameIfExists(userList, &user->username);
-};
 
 // *******************************************
 // CONTROLLER
@@ -487,7 +487,7 @@ public slots:
       MG_ERROR(("%p %s", c->fd, (char *)ev_data));
     } else if (ev == MG_EV_WS_OPEN) {
       // When websocket handshake is successful, send message
-      store_ip_addr(&c->loc);
+      store_ip_addr(&c->loc, ip, sizeof(ip));
 
       // Add QT controller for updating IpLabel
       controller->updateIpLabel();
