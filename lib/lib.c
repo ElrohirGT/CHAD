@@ -793,6 +793,20 @@ void UWU_ChatHistory_addMessage(UWU_ChatHistory *hist, UWU_ChatEntry *entry) {
   hist->next_idx += 1;
 }
 
+// Clears all messages in the given ChatHistory.
+// Frees each ChatEntry and resets the internal state.
+void UWU_ChatHistory_clear(UWU_ChatHistory *hist) {
+  if (hist == NULL || hist->messages == NULL)
+    return;
+
+  for (size_t i = 0; i < hist->count; i++) {
+    UWU_ChatEntry_free(&hist->messages[i]);
+  }
+
+  hist->count = 0;
+  hist->next_idx = 0;
+}
+
 // Gives limits for iterating over a `UWU_ChatHistory` in insertion order.
 // `start` and `end` ARE NOT indexes! Make sure to apply the % operator
 // because they can grow far beyond what the collection could hold!

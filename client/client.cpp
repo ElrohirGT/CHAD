@@ -509,7 +509,44 @@ public:
         break;
       }
       // Clearing messages.
-      // UWU_ChatHistory_clear(UWU_STATE->currentChat);
+      UWU_ChatHistory_clear(UWU_STATE->currentChat);
+
+      UWU_ChatHistory *history = UWU_STATE->currentChat;
+
+      int totalMessages = msg.data[1];
+      int offset = 0;
+      for (size_t n = 0; n < totalMessages; n++) {
+        size_t index = 2 + offset;
+        size_t lenUsername = msg.data[index];
+        size_t lenChat = msg.data[index + lenUsername + 1];
+        char *username = (char *)malloc(lenUsername);
+        char *chat = (char *)malloc(lenChat);
+        if (username == NULL || chat == NULL) {
+          UWU_PANIC("Unable to allocate memory for new incoming messages");
+        }
+
+        for (size_t i = 0; i < lenUsername; i++) {
+          username[i] = msg.data[index + 1 + i];
+        }
+
+        for (size_t i = 0; i < lenChat; i++) {
+          chat[i] = msg.data[index + lenUsername + 2 + i];
+        }
+
+        UWU_String content = UWU_String{.data = chat, .length = lenChat};
+        UWU_String contact =
+            UWU_String{.data = username, .length = lenUsername};
+
+        UWU_ChatEntry entry =
+            UWU_ChatEntry{.content = content, .origin_username = contact};
+
+        UWU_ChatHistory_addMessage(history, &entry);
+
+        free(username);
+        free(chat);
+
+        offset = offset + lenUsername + lenChat + 2;
+      }
 
     } break;
     default:
