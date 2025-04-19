@@ -997,6 +997,48 @@ private:
   QString *selectedUser;
 };
 
+class UWUMessageModel : public QAbstractListModel {
+  Q_OBJECT
+
+public:
+  UWUMessageModel(QObject *parent = nullptr)
+    : QAbstractListModel(parent), chatHistory(nullptr) {}
+
+  void setChatHistory(UWU_ChatHistory *history) {
+    beginResetModel();
+    chatHistory = history;
+    endResetModel();
+  }
+
+  int rowCount(const QModelIndex &parent = QModelIndex()) const override {
+    if (!chatHistory || parent.isValid())
+      return 0;
+    return chatHistory->count;
+  }
+
+  QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override {
+    if (!chatHistory || !index.isValid() || index.row() >= (int)chatHistory->count)
+      return QVariant();
+
+    if (role == Qt::DisplayRole) {
+      UWU_ChatEntry entry = chatHistory->messages[index.row()];
+      QString sender = QString::fromUtf8(entry.origin_username.data, entry.origin_username.length);
+      QString content = QString::fromUtf8(entry.content.data, entry.content.length);
+
+      qDebug() << "Message #" << index.row();
+      qDebug() << "Sender raw:" << QByteArray(entry.origin_username.data, entry.origin_username.length);
+      qDebug() << "Content raw:" << QByteArray(entry.content.data, entry.content.length);
+
+      return QString("%1: %2").arg(sender, content);
+    }
+
+    return QVariant();
+  }
+
+private:
+  UWU_ChatHistory *chatHistory;
+};
+
 #include "client.moc"
 
 int main(int argc, char *argv[]) {
@@ -1068,15 +1110,57 @@ int main(int argc, char *argv[]) {
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
 
-  QObject::connect(controller, &Controller::stateChanged, userModel, &UWUUserModel::refreshUserList);
+  UWUMessageModel *messageModel = new UWUMessageModel();
+  QListView *chatMessages = new QListView();
+  chatMessages->setModel(messageModel);
+  chatMessages->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-  QString selectedUser;
+  QObject::connect(controller, &Controller::stateChanged,
+                   [&](UWU_ClientState *newState) {
+                     userModel->refreshUserList();
+                     if (newState->currentChat) {
+                        qDebug() << "Total mensajes en chat:" << newState->currentChat->count;
+                       messageModel->setChatHistory(newState->currentChat);
+                     }
+                   });
+
   QObject::connect(chatUsers, &QListView::clicked,
     [&](const QModelIndex &index){
-      if (index.isValid()) {
-        selectedUser = index.data(UWUUserModel::UsernameRole).toString();
-        qDebug() << "Clicked Username:" << username;
-      }
+        if (index.isValid()) {
+            QString username = index.data(UWUUserModel::UsernameRole).toString();
+            qDebug() << "Clicked Username for messages:" << username;
+
+            // Buscar el historial de chat en el mapa de Chats
+            QByteArray usernameUtf8 = username.toUtf8();
+            UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(&UWU_STATE->Chats, usernameUtf8.constData(), usernameUtf8.size());
+
+            if (history) {
+              // Establecer el historial de chat en el modelo de mensajes
+              messageModel->setChatHistory(history);
+              UWU_STATE->currentChat = history; // Asegúrate de que esto esté aquí
+          } else {
+              qDebug() << "Chat history not found for user:" << username;
+              messageModel->setChatHistory(nullptr);
+              UWU_STATE->currentChat = nullptr;
+          }
+
+
+            // Crear una copia de QString para pasar al handler
+            QString *contactUsername = new QString(username);
+
+            // Convertir el QString a UWU_String para el handler
+            QByteArray contactUtf8Handler = contactUsername->toUtf8();
+            UWU_String contact;
+            contact.data = (char*) malloc(contactUtf8Handler.size());
+            memcpy(contact.data, contactUtf8Handler.constData(), contactUtf8Handler.size());
+            contact.length = contactUtf8Handler.size();
+
+            get_messages_handler(&contact);
+
+            // Es importante liberar la memoria asignada para UWU_String después de usarla
+            free(contact.data);
+            delete contactUsername; // Liberar la copia de QString
+        }
   });
 
   UWUUserDelegate *userDelegate = new UWUUserDelegate();
@@ -1086,15 +1170,25 @@ int main(int argc, char *argv[]) {
                    [=](const QModelIndex &index) { chatUsers->update(index); });
 
   // Create button for handling busy status
-  StatusButton *statusButton =
-      new StatusButton(state.CurrentUser.status, controller);
+  StatusButton *statusButton = new StatusButton(state.CurrentUser.status, controller);
 
   QString msg;
   // Create text input
   ChatLineEdit *chatInput = new ChatLineEdit(&msg);
+  QString selectedUser;
 
   // Create button to send message
   ChatSendButton *sendInput = new ChatSendButton(&msg, chatInput, &selectedUser);
+
+  QObject::connect(chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
+      [&](const QModelIndex &current, const QModelIndex &previous){
+          if (current.isValid()) {
+              selectedUser = current.data(UWUUserModel::UsernameRole).toString();
+              qDebug() << "Selected user:" << selectedUser;
+          } else {
+              selectedUser.clear();
+          }
+      });
 
   // Generates Widgets
   QWidget *mainWidget = new QWidget();
@@ -1128,8 +1222,6 @@ int main(int argc, char *argv[]) {
   QLabel *nameLabel = new QLabel(username);
   nameLabel->setContentsMargins(10, 0, 0, 0);
   nameLabel->setStyleSheet("font-size: 25px;");
-
-  QListView *chatMessages = new QListView();
 
   QPushButton *helpButton = new QPushButton();
   helpButton->setIcon(QIcon("icons/question-icon.jpg"));
