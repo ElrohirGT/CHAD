@@ -28,6 +28,7 @@
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
+#include <QMouseEvent>
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
@@ -774,19 +775,27 @@ public:
     setStyleSheet("padding: 5px");
   }
 
+protected:
+  void mousePressEvent(QMouseEvent *event) override {
+    if (event->button() == Qt::LeftButton) {
+      qDebug() << "User:" << username_;
+    }
+    QWidget::mousePressEvent(event);
+  }
+
 private:
   char username_[255];
   char ip_[255];
 };
 
-struct UserData {
-  QString name;
-  QString ip;
-};
-
 class UWUUserModel : public QAbstractListModel {
   Q_OBJECT
 public:
+  enum UserRoles {
+    UsernameRole = Qt::UserRole + 1,
+    IpRole = Qt::UserRole + 2
+  };
+
   UWUUserModel(const UWU_UserList &users, QObject *parent = nullptr)
       : QAbstractListModel(parent), userDataList(users) {}
 
@@ -809,11 +818,11 @@ public:
     const UWU_User &user = node->data;
 
     if (role == Qt::DisplayRole) {
-      // Puedes retornar algo simple para el texto por defecto si es necesario
       return QString::fromUtf8(user.username.data);
-    } else if (role == Qt::UserRole + 1) {
-      // Retornar los datos del usuario para el delegado
-      return QVariant::fromValue(user);
+    } else if (role == UsernameRole) {
+      return QString::fromUtf8(user.username.data);
+    } else if (role == IpRole) {
+      return QString::fromUtf8("fixme");
     }
     return QVariant();
   }
@@ -849,13 +858,8 @@ public:
     if (!index.isValid())
       return;
 
-    QVariant userDataVar = index.data(Qt::UserRole + 1);
-    if (!userDataVar.canConvert<UserData>()) {
-      QStyledItemDelegate::paint(painter, option, index);
-      return;
-    }
-
-    UserData user = userDataVar.value<UserData>();
+    QString username = index.data(UWUUserModel::UsernameRole).toString();
+    QString ip = index.data(UWUUserModel::IpRole).toString();
 
     // Colores según hover
     QColor bgColor;
@@ -880,9 +884,9 @@ public:
     QRect nameRect = option.rect.adjusted(5, 5, -5, -option.rect.height() / 2);
     QRect ipRect = option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
 
-    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, user.name);
+    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, username);
     painter->setFont(option.font); // IP sin negrita
-    painter->drawText(ipRect, Qt::AlignLeft | Qt::AlignVCenter, user.ip);
+    painter->drawText(ipRect, Qt::AlignLeft | Qt::AlignVCenter, ip);
 
     painter->restore();
   }
@@ -892,6 +896,50 @@ public:
     UWUUserQT tempWidget("dummy", "dummy");
     return QSize(option.rect.width(), tempWidget.sizeHint().height());
   }
+};
+
+class ChatLineEdit : public QLineEdit {
+  Q_OBJECT
+public:
+  ChatLineEdit(QString *msg, QWidget *parent = nullptr) : QLineEdit(parent), message(msg) {
+    setPlaceholderText("Write a message");
+    connect(this, &QLineEdit::textChanged, this, &ChatLineEdit::onTextChanged);
+  }
+
+private slots:
+  void onTextChanged(const QString &text) {
+    if (message) {
+      *message = text;
+    }
+  }
+
+private:
+  QString *message;
+};
+
+class ChatSendButton : public QPushButton {
+  Q_OBJECT
+public:
+  ChatSendButton(QString *msg, ChatLineEdit *input, QWidget *parent = nullptr) : 
+    QPushButton(parent), message(msg), inputField(input) {
+    setMaximumWidth(100);
+    setIcon(QIcon("icons/send-icond.png"));
+    connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
+  }
+
+private slots:
+  void onSendClicked() {
+    if (message) {
+      *message = "";
+    }
+    if (inputField) {
+      inputField->clear();
+    }
+  }
+
+private:
+  QString *message;
+  ChatLineEdit *inputField;
 };
 
 #include "client.moc"
@@ -948,8 +996,6 @@ int main(int argc, char *argv[]) {
   // LAYOUT INITIALIZATION
   // **********************
 
-  int isBusy = 30;
-
   // Crear la ventana principal
   MainWindow mainWindow;
 
@@ -965,6 +1011,15 @@ int main(int argc, char *argv[]) {
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
 
+  QObject::connect(chatUsers, &QListView::clicked,
+    [&](const QModelIndex &index){
+        if (index.isValid()) {
+            QString username = index.data(UWUUserModel::UsernameRole).toString();
+            qDebug() << "Clicked Username:" << username;
+            // Aquí puedes realizar cualquier otra acción con el username
+        }
+  });
+
   UWUUserDelegate *userDelegate = new UWUUserDelegate();
   chatUsers->setItemDelegate(userDelegate);
 
@@ -974,6 +1029,13 @@ int main(int argc, char *argv[]) {
   // Create button for handling busy status
   StatusButton *statusButton =
       new StatusButton(state.CurrentUser.status, controller);
+
+  QString msg;
+  // Create text input
+  ChatLineEdit *chatInput = new ChatLineEdit(&msg);
+
+  // Create button to send message
+  ChatSendButton *sendInput = new ChatSendButton(&msg, chatInput);
 
   // Generates Widgets
   QWidget *mainWidget = new QWidget();
@@ -1031,13 +1093,6 @@ int main(int argc, char *argv[]) {
 
   chatListWidget->setLayout(chatListLayout);
   chatListLayout->addWidget(chatUsers);
-
-  QLineEdit *chatInput = new QLineEdit();
-  chatInput->setPlaceholderText("Write a message");
-
-  QPushButton *sendInput = new QPushButton();
-  sendInput->setMaximumWidth(100);
-  sendInput->setIcon(QIcon("icons/send-icond.png"));
 
   inputLayout->addWidget(chatInput);
   inputLayout->addWidget(sendInput);
