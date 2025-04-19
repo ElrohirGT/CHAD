@@ -373,9 +373,24 @@ public:
     case GOT_USER:
       /* code */
       break;
-    case REGISTERED_USER:
-      /* code */
-      break;
+    case REGISTERED_USER: {
+      UWU_Err err = NO_ERROR;
+      size_t username_length = msg.data[1];
+      UWU_ConnStatus req_status = (UWU_ConnStatus)msg.data[2 + username_length];
+      UWU_String req_username = {.data = &msg.data[2],
+                                 .length = username_length};
+      UWU_User *temp =
+          UWU_UserList_findByName(&UWU_STATE->ActiveUsers, &req_username);
+
+      if (temp == NULL) {
+        UWU_User user = UWU_User_copyFrom(temp, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC("Unable to register new user");
+        }
+        register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
+        printf("INSERTING %.*s\n", username_length, req_username.data);
+      }
+    } break;
     case CHANGED_STATUS: {
       size_t username_length = msg.data[1];
       UWU_ConnStatus req_status = (UWU_ConnStatus)msg.data[2 + username_length];
