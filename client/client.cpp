@@ -259,8 +259,7 @@ public:
     case ERROR: {
       int err_code = (int)msg.data[1];
       emit errorMsg(err_code);
-      break;
-    }
+    } break;
     case LISTED_USERS:
       /* code */
       break;
@@ -270,9 +269,46 @@ public:
     case REGISTERED_USER:
       /* code */
       break;
-    case CHANGED_STATUS:
-      /* code */
-      break;
+    case CHANGED_STATUS: {
+      size_t username_length = msg.data[1];
+      UWU_ConnStatus req_status = (UWU_ConnStatus)msg.data[2 + username_length];
+      UWU_String req_username = {.data = &msg.data[2],
+                                 .length = username_length};
+      if (UWU_String_equal(&UWU_STATE->CurrentUser.username, &req_username)) {
+        UWU_STATE->CurrentUser.status = req_status;
+        printf("CHANGING %.*s STATUS TO : %d\n",
+               UWU_STATE->CurrentUser.username.length,
+               UWU_STATE->CurrentUser.username.data, (int)req_status);
+      } else {
+        UWU_Bool found_it = FALSE;
+        for (struct UWU_UserListNode *current = UWU_STATE->ActiveUsers.start;
+             current != NULL; current = current->next) {
+          if (current->is_sentinel) {
+            continue;
+          }
+
+          if (UWU_String_equal(&current->data.username, &req_username)) {
+            found_it = TRUE;
+            current->data.status = req_status;
+            printf("CHANGING %.*s STATUS TO : %d\n",
+                   current->data.username.length, current->data.username.data,
+                   (int)req_status);
+          }
+        }
+
+        if (!found_it) {
+          UWU_Err err = NO_ERROR;
+          UWU_User user = {.username = req_username, .status = req_status};
+          struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
+
+          UWU_UserList_insertEnd(&UWU_STATE->ActiveUsers, &node, err);
+          if (err != NO_ERROR) {
+            UWU_PANIC("Fatal: Couldn't add username to active usernames!");
+            return;
+          }
+        }
+      }
+    } break;
     case GOT_MESSAGE:
       break;
     case GOT_MESSAGES:
