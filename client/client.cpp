@@ -498,8 +498,9 @@ public:
       free(username);
       free(chat);
     } break;
-    case GOT_MESSAGES:
-      break;
+    case GOT_MESSAGES: {
+
+    } break;
     default:
       fprintf(stderr, "Error: Unrecognized message from server!\n");
       emit errorMsg(UNRECOGNIZED_MSG);
@@ -597,6 +598,7 @@ public slots:
     mg_mgr_init(&mgr);
     // Create client
     ws_conn = mg_ws_connect(&mgr, s_url, ws_listener, this, NULL);
+    mg_log_set(1); // Disable debu logging.
 
     // WS Event loop
     QTimer *pollTimer = new QTimer(this);
