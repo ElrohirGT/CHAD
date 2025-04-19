@@ -383,10 +383,12 @@ public:
           UWU_UserList_findByName(&UWU_STATE->ActiveUsers, &req_username);
 
       if (temp == NULL) {
-        UWU_User user = UWU_User_copyFrom(temp, err);
+        UWU_String usernameStr = UWU_String_copy(&req_username, err);
         if (err != NO_ERROR) {
           UWU_PANIC("Unable to register new user");
         }
+        UWU_User user = UWU_User{.username = usernameStr, .status = req_status};
+
         register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
         printf("INSERTING %.*s\n", username_length, req_username.data);
       }
