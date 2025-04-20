@@ -1649,36 +1649,57 @@ int main(int argc, char *argv[]) {
     QDialog modal(mainWidget);
     modal.setWindowTitle("Help");
     modal.setModal(true);
-    QLabel label("In this chat you can talk to other people connected to it!");
-    QLabel instrucctions(
-        "You can:\n1. Chat with another user: Just by selecting one of the "
-        "chats on the left\nyou can send messages to that person");
-    QLabel instrucctions2("2. Use the general chat: This receives messages "
-                          "from all users connected for everyone to see");
-    QLabel instrucctions3("3. List connected users: At the left of the chat it "
-                          "apperas all the people that is using the chat, \n "
-                          "you can see their name and current status");
-    QLabel instrucctions4(
-        "4. Change status: You can change your status between ACTIVE (blue), "
-        "BUSY (red), INACTIVE (yellow) and DISCONNECTED (gray)\n Your initial "
-        "status is ACTIVE if there is no activy for a few seconds your status "
-        "change to INACTIVE, to go back to ACTIVE you just have to send a "
-        "message.\nIf you are ACTIVE or INACTIVE and you press the status "
-        "button you change to BUSY status, to change from BUSY just press "
-        "again the status button and you go back to ACTIVE.\n To be "
-        "DISCONNECTED just close your chat session");
 
+    // Títulos
+    QLabel label("Welcome to the chat! Here you can interact with other users connected to the platform.");
+
+    // Instrucciones
+    QLabel instrucctions("1. Chat with another user: Select a chat from the list on the left to start sending messages to that person.");
+    QLabel instrucctions2("2. Use the general chat: This chat receives messages from all users connected to the platform, visible to everyone.");
+    QLabel instrucctions3("3. View connected users: On the left side, you can see a list of all active users. You can view their names and current statuses.");
+    QLabel instrucctions4("4. Change your status: You can switch between ACTIVE, BUSY, and INACTIVE statuses.\n"
+                          "Your default status is ACTIVE. If there is no activity for a while, your status will automatically change to INACTIVE.\n"
+                          "To return to ACTIVE, simply send a message.\n"
+                          "If you are ACTIVE or INACTIVE and press the status button, it will switch to BUSY. Press it again to return to ACTIVE.\n"
+                          "To become DISCONNECTED, simply close your chat session.");
+
+    // Crear botones con iconos
     QPushButton closeButton("Close");
+    closeButton.setIcon(QIcon(":/icons/close-icon.png"));  // Asume que tienes un icono para el botón de cierre
+
+    // Iconos de estado
+    QLabel statusLabel("Here are the status icons:");
+    QLabel activeStatus("ACTIVE");
+    QLabel busyStatus("BUSY");
+    QLabel inactiveStatus("INACTIVE");
+
+    QLabel activeIcon, busyIcon, inactiveIcon;
+    activeIcon.setPixmap(QPixmap("icons/active.png").scaled(30, 30, Qt::KeepAspectRatio));
+    busyIcon.setPixmap(QPixmap("icons/busy.png").scaled(30, 30, Qt::KeepAspectRatio));
+    inactiveIcon.setPixmap(QPixmap("icons/idle.png").scaled(30, 30, Qt::KeepAspectRatio));
+
+    // Crear el layout
     QVBoxLayout modalLayout(&modal);
     modalLayout.addWidget(&label);
     modalLayout.addWidget(&instrucctions);
     modalLayout.addWidget(&instrucctions2);
     modalLayout.addWidget(&instrucctions3);
     modalLayout.addWidget(&instrucctions4);
+
+    // Mostrar los íconos de los estados
+    modalLayout.addWidget(&statusLabel);
+    modalLayout.addWidget(&activeStatus);
+    modalLayout.addWidget(&activeIcon);
+    modalLayout.addWidget(&busyStatus);
+    modalLayout.addWidget(&busyIcon);
+    modalLayout.addWidget(&inactiveStatus);
+    modalLayout.addWidget(&inactiveIcon);
+
+    // Botón de cierre
     modalLayout.addWidget(&closeButton);
 
-    QObject::connect(&closeButton, &QPushButton::clicked, &modal,
-                     &QDialog::accept);
+    QObject::connect(&closeButton, &QPushButton::clicked, &modal, &QDialog::accept);
+
     modal.exec();
   });
 
