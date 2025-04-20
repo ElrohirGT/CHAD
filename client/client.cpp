@@ -1023,8 +1023,9 @@ public:
 
 public slots:
   void refreshUserList() {
-    beginResetModel();
-    endResetModel();
+    QModelIndex topLeft = index(0, 0);
+    QModelIndex bottomRight = index(rowCount() - 1, 0);
+    emit dataChanged(topLeft, bottomRight, {StatusRole});
   }
 
 private:
@@ -1051,7 +1052,8 @@ private:
 class UWUUserDelegate : public QStyledItemDelegate {
   Q_OBJECT
 public:
-  UWUUserDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+  UWUUserDelegate(QString *selectedUsername, QObject *parent = nullptr) 
+    : QStyledItemDelegate(parent), selectedChatUsername(selectedUsername) {}
 
   void paint(QPainter *painter, const QStyleOptionViewItem &option,
              const QModelIndex &index) const override {
@@ -1060,6 +1062,11 @@ public:
 
     QString username = index.data(UWUUserModel::UsernameRole).toString();
     QString status = index.data(UWUUserModel::StatusRole).toString();
+
+    QStyleOptionViewItem modifiedOption = option;
+    if (selectedChatUsername && username == *selectedChatUsername) {
+      modifiedOption.state |= QStyle::State_Selected;
+    }
 
     // hover colors
     QColor bgColor;
@@ -1097,6 +1104,9 @@ public:
     UWUUserQT tempWidget("dummy", ACTIVE);
     return QSize(option.rect.width(), tempWidget.sizeHint().height());
   }
+
+private:
+  QString *selectedChatUsername;
 };
 
 class ChatLineEdit : public QLineEdit {
@@ -1344,6 +1354,8 @@ int main(int argc, char *argv[]) {
   chatUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
+  
+  QString selectedUser;
 
   UWUMessageModel *messageModel = new UWUMessageModel();
   QListView *chatMessages = new QListView();
@@ -1383,7 +1395,7 @@ int main(int argc, char *argv[]) {
         }
       });
 
-  UWUUserDelegate *userDelegate = new UWUUserDelegate();
+  UWUUserDelegate *userDelegate = new UWUUserDelegate(&selectedUser);
   chatUsers->setItemDelegate(userDelegate);
 
   QObject::connect(chatUsers, &QListView::entered, chatUsers,
@@ -1394,27 +1406,17 @@ int main(int argc, char *argv[]) {
       new StatusButton(state.CurrentUser.status, controller);
 
   QString msg;
+
   // Create text input
   ChatLineEdit *chatInput = new ChatLineEdit(&msg);
-  QString selectedUser;
 
   // Create button to send message
   ChatSendButton *sendInput =
       new ChatSendButton(&msg, chatInput, &selectedUser);
 
-  QObject::connect(
-      chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
-      [&](const QModelIndex &current, const QModelIndex &previous) {
-        if (current.isValid()) {
-          selectedUser = current.data(UWUUserModel::UsernameRole).toString();
-          qDebug() << "Selected user:" << selectedUser;
-        } else {
-          selectedUser.clear();
-        }
-      });
-
-  // Generates Widgets
-  QWidget *mainWidget = new QWidget();
+      
+      // Generates Widgets
+      QWidget *mainWidget = new QWidget();
   QWidget *topWidget = new QWidget();
   QWidget *nameWidget = new QWidget();
   QWidget *centralWidget = new QWidget();
@@ -1438,7 +1440,22 @@ int main(int argc, char *argv[]) {
   nameLayout->setContentsMargins(0, 0, 0, 0);
   QHBoxLayout *inputLayout = new QHBoxLayout();
   inputLayout->setContentsMargins(0, 0, 0, 0);
+  
+  QObject::connect(
+      chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
+      [&](const QModelIndex &current, const QModelIndex &previous) {
+        if (current.isValid()) {
+          selectedUser = current.data(UWUUserModel::UsernameRole).toString();
+          qDebug() << "Selected user:" << selectedUser;
 
+          inputLayout->addWidget(chatInput);
+          inputLayout->addWidget(sendInput);
+          inputWidget->update();
+        } else {
+          selectedUser.clear();
+        }
+  });
+  
   QLabel *ipLabel = new QLabel(ip);
   ipLabel->setContentsMargins(10, 0, 0, 0);
   ipLabel->setText(QString::fromUtf8(ip));
@@ -1508,8 +1525,6 @@ int main(int argc, char *argv[]) {
   chatListWidget->setLayout(chatListLayout);
   chatListLayout->addWidget(chatUsers);
 
-  inputLayout->addWidget(chatInput);
-  inputLayout->addWidget(sendInput);
   inputWidget->setLayout(inputLayout);
 
   chatAreaLayout->addWidget(chatMessages, 1);
