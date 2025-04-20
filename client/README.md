@@ -79,7 +79,7 @@ In addition to these, a thread pool is maintained to manage the threads responsi
 #### Global State
 Stores the state of the entire app.
 
-https://github.com/ElrohirGT/CHAD/blob/2c12466a235f8979baee4a4da5ec458b4bdfc2ba/client/client.cpp#L167-L185C1
+https://github.com/ElrohirGT/CHAD/blob/3ee76fb0fe4bcee34741f6d1a9089af42dd2f93d/client/client.cpp#L171-L185
 
 #### Controller Thread
 We are using Qt Thread library, they represent a thread as a class.
@@ -99,4 +99,4 @@ https://github.com/ElrohirGT/CHAD/blob/2c12466a235f8979baee4a4da5ec458b4bdfc2ba/
 
 If the UI wants to request something to de server it does so by a function.
 
-https://github.com/ElrohirGT/CHAD/blob/2c12466a235f8979baee4a4da5ec458b4bdfc2ba/client/client.cpp#L745C1-L751C1
+https://github.com/ElrohirGT/CHAD/blob/2c12466a235f8979baee4a4da5ec458b4bdfc2ba/client/client.cpp#L745-L750
