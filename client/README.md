@@ -98,4 +98,5 @@ https://github.com/ElrohirGT/CHAD/blob/2c12466a235f8979baee4a4da5ec458b4bdfc2ba/
 #### UI handlers
 
 If the UI wants to request something to de server it does so by a function.
+
 https://github.com/ElrohirGT/CHAD/blob/2c12466a235f8979baee4a4da5ec458b4bdfc2ba/client/client.cpp#L745C1-L751C1
