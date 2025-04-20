@@ -1032,13 +1032,6 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
         return;
       }
 
-      // UWU_Arena arena = UWU_Arena_init(UWU_STATE->req_arena_max_size, err);
-      // if (err != NO_ERROR) {
-      //   MG_ERROR(("Error: Can't allocate enough memory to copy username!"));
-      //   mg_http_reply(c, 500, "", "RAN OUT OF MEMORY");
-      //   return;
-      // }
-
       int pipe_fd[2];
       if (pipe(pipe_fd) < 0) {
         MG_ERROR(("Error: Can't initialize pipe to transmit messages!"));
@@ -1074,6 +1067,7 @@ static void fn(struct mg_connection *c, int ev, void *ev_data) {
       size_t max_length = 3 + 255;
       char buff[max_length];
       UWU_String msg = changed_status_builder(buff, &user);
+      msg.data[0] = REGISTERED_USER;
 
       for (struct UWU_UserListNode *current = UWU_STATE->active_users.start;
            current != NULL; current = current->next) {
