@@ -1,4 +1,4 @@
-# CHAD Server
+<h1 align="center">Server</h1>
 
 **IMPORTANT!** Remember to enter the nix development shell using:
 
@@ -7,7 +7,7 @@
 nix develop
 ```
 
-## Getting started
+## Getting started 🚀
 
 All you need to do to get started is compile the `./nob.c` file:
 
@@ -17,7 +17,7 @@ cc nob.c -o nob
 
 This file acts as the build system for the entire project!
 
-## Building the project
+## Building the project 👷🏿‍♂️
 
 To build the project simply execute:
 
@@ -30,7 +30,7 @@ To build the project simply execute:
 file you won't need to recompile it manually! `./nob` takes care of that for
 you.
 
-## Running the project
+## Running the project 🏃
 
 Just run the binary! If you want to use the special flags to modify something
 you can just use the `-h` flag to see the help menu!
@@ -42,7 +42,7 @@ you can just use the `-h` flag to see the help menu!
 # ./build/main -h
 ```
 
-## Multithreading
+## Multithreading 🧵
 
 Last time you checked on us the server didn't run with various threads. Now it
 creates a thread for each connection it receives and manages all race conditions
