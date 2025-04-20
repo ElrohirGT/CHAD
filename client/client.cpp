@@ -606,7 +606,7 @@ public slots:
       printf("Closing connection\n");
       printf("This may happened due if the client was unable to connect to the "
              "server.\n");
-      emit controller->finished();
+      emit controller->clientDisconnected();
     } else if (ev == MG_EV_CONNECT && mg_url_is_ssl(s_url)) {
       // On connection established
       struct mg_tls_opts opts = {.name = mg_url_host(s_url)};
@@ -692,6 +692,8 @@ signals:
   void stateChanged(UWU_ClientState *newState);
   void finished();
   // ERRORS
+  // The connection to the server was cut unexpectedely.
+  void clientDisconnected();
   // The message received from the server does not figure out on the protocol
   void gotInvalidMessage();
   // The user you tried to access doesn't exist!
