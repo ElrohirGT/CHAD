@@ -21,8 +21,11 @@
 #include <QPushButton>
 #include <QRunnable>
 #include <QString>
+#include <QScreen>
 #include <QStringListModel>
 #include <QStyledItemDelegate>
+#include <QPropertyAnimation>
+#include <QGraphicsOpacityEffect>
 #include <QTextEdit>
 #include <QThread>
 #include <QThreadPool>
@@ -674,7 +677,7 @@ public slots:
       break;
     case EMPTY_MESSAGE:
       printf("ERROR: Empty message\n");
-      emit emptyMessage();
+      emit emptyMessage(3000);
       break;
     case USER_ALREADY_DISCONNECTED:
       printf("ERROR: User already disconnected\n");
@@ -699,7 +702,7 @@ signals:
   // The status you want to change to doesn't exist!
   void invalidStatus();
   // The message you wish to send is empty!
-  void emptyMessage();
+  void emptyMessage(int);
   // You're trying to communicate with a disconnected user!
   void userAlreadyDisconnected();
 };
@@ -1177,6 +1180,56 @@ private:
   UWU_ChatHistory *chatHistory;
 };
 
+class Toast : public QLabel {
+  public:
+      Toast(const QString& text, QWidget* parent = nullptr, Qt::WindowFlags f = Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint)
+          : QLabel(text, parent, f) {
+          setAlignment(Qt::AlignCenter);
+          setStyleSheet("background-color: rgba(0, 0, 0, 150); color: white; padding: 10px; border-radius: 5px; font-size: 100px");
+          setAttribute(Qt::WA_TranslucentBackground);
+          hide();
+      }
+  
+      void showToast(int duration) {
+          if (isVisible()) {
+              hide();
+          }
+  
+          if (parentWidget()) { 
+            QWidget* parent = parentWidget();
+            QPoint parentCenter = parent->geometry().center();
+            int x = parentCenter.x() - width() / 2;
+            int y = parentCenter.y() - height() / 2 - 50; 
+            move(x, y);
+        } else {
+            QScreen* screen = QGuiApplication::primaryScreen();
+            if (screen) {
+                QRect screenGeometry = screen->geometry();
+                int x = (screenGeometry.width() - width()) / 2;
+                int y = screenGeometry.height() / 4;
+                move(x, y);
+            }
+        }
+  
+          show();
+          setGraphicsEffect(new QGraphicsOpacityEffect(this));
+          QPropertyAnimation* animation = new QPropertyAnimation(graphicsEffect(), "opacity");
+          animation->setDuration(500);
+          animation->setStartValue(0.0);
+          animation->setEndValue(1.0);
+          animation->start(QAbstractAnimation::DeleteWhenStopped);
+  
+          QTimer::singleShot(duration, this, [this]() {
+              QPropertyAnimation* animation = new QPropertyAnimation(graphicsEffect(), "opacity");
+              animation->setDuration(500);
+              animation->setStartValue(1.0);
+              animation->setEndValue(0.0);
+              animation->start(QAbstractAnimation::DeleteWhenStopped);
+              connect(animation, &QPropertyAnimation::finished, this, &Toast::hide);
+          });
+      }
+  };
+
 #include "client.moc"
 
 int main(int argc, char *argv[]) {
@@ -1431,6 +1484,27 @@ int main(int argc, char *argv[]) {
 
   controller->setIpLabel(ipLabel);
 
+  // TOAST for showing errors
+  // The message received from the server does not figure out on the protocol
+  Toast* undeclaredMessageToast = new Toast("MESSAGE NOT FOUND IN THIS PROTOCOL!", &mainWindow);
+  QObject::connect(controller, &Controller::gotInvalidMessage, undeclaredMessageToast, &Toast::showToast);
+
+  // The user you tried to access doesn't exist!
+  Toast* invalidUserToast = new Toast("THIS USER DOESN'T EXIST!", &mainWindow);
+  QObject::connect(controller, &Controller::userNotFound, invalidUserToast, &Toast::showToast);
+
+  // The status you want to change to doesn't exist!
+  Toast* invalidStatusToast = new Toast("THE STATUS DOESN'T EXIST!", &mainWindow);
+  QObject::connect(controller, &Controller::invalidStatus, invalidStatusToast, &Toast::showToast);
+
+  // The message you wish to send is empty!
+  Toast* invalidMessageToast = new Toast("INVALID EMPTY MESSAGE!", &mainWindow);
+  QObject::connect(controller, &Controller::emptyMessage, invalidMessageToast, &Toast::showToast);
+
+  // You're trying to communicate with a disconnected user!
+  Toast* invalidCommunicationToast = new Toast("CAN'T COMMUNICATE TO DISCONNECTED USER!", &mainWindow);
+  QObject::connect(controller, &Controller::userAlreadyDisconnected, invalidCommunicationToast, &Toast::showToast);
+  
   int ret = app.exec();
   return ret;
 }
