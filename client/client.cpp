@@ -609,7 +609,7 @@ public slots:
       printf("Closing connection\n");
       printf("This may happened due if the client was unable to connect to the "
              "server.\n");
-      emit controller->clientDisconnected();
+      emit controller->clientDisconnected(3000);
     } else if (ev == MG_EV_CONNECT && mg_url_is_ssl(s_url)) {
       // On connection established
       struct mg_tls_opts opts = {.name = mg_url_host(s_url)};
@@ -669,11 +669,11 @@ public slots:
     switch (err) {
     case USER_NOT_FOUND:
       printf("ERROR: User not found\n");
-      emit userNotFound();
+      emit userNotFound(3000);
       break;
     case INVALID_STATUS:
       printf("ERROR: Invalid status\n");
-      emit invalidStatus();
+      emit invalidStatus(3000);
       break;
     case EMPTY_MESSAGE:
       printf("ERROR: Empty message\n");
@@ -681,11 +681,11 @@ public slots:
       break;
     case USER_ALREADY_DISCONNECTED:
       printf("ERROR: User already disconnected\n");
-      emit userAlreadyDisconnected();
+      emit userAlreadyDisconnected(3000);
       break;
     default:
       printf("ERROR: Unrecognized message\n");
-      emit gotInvalidMessage();
+      emit gotInvalidMessage(3000);
       break;
     }
   }
@@ -696,17 +696,17 @@ signals:
   void finished();
   // ERRORS
   // The connection to the server was cut unexpectedely.
-  void clientDisconnected();
+  void clientDisconnected(int);
   // The message received from the server does not figure out on the protocol
-  void gotInvalidMessage();
+  void gotInvalidMessage(int);
   // The user you tried to access doesn't exist!
-  void userNotFound();
+  void userNotFound(int);
   // The status you want to change to doesn't exist!
-  void invalidStatus();
+  void invalidStatus(int);
   // The message you wish to send is empty!
   void emptyMessage(int);
   // You're trying to communicate with a disconnected user!
-  void userAlreadyDisconnected();
+  void userAlreadyDisconnected(int);
 };
 
 // HANDLERS
@@ -1187,7 +1187,7 @@ class Toast : public QLabel {
       Toast(const QString& text, QWidget* parent = nullptr, Qt::WindowFlags f = Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint)
           : QLabel(text, parent, f) {
           setAlignment(Qt::AlignCenter);
-          setStyleSheet("background-color: rgba(0, 0, 0, 150); color: white; padding: 10px; border-radius: 5px; font-size: 100px");
+          setStyleSheet("background-color: rgba(0, 0, 0, 150); color: white; padding: 10px; border-radius: 5px; font-size: 50px");
           setAttribute(Qt::WA_TranslucentBackground);
           hide();
       }
@@ -1507,6 +1507,11 @@ int main(int argc, char *argv[]) {
   Toast* invalidCommunicationToast = new Toast("CAN'T COMMUNICATE TO DISCONNECTED USER!", &mainWindow);
   QObject::connect(controller, &Controller::userAlreadyDisconnected, invalidCommunicationToast, &Toast::showToast);
   
+  // CLIENT DISCONNECTS UNEXPECTLY
+  Toast* clientDisconnectToast = new Toast("UNEXPECTED DISCONNECTION!", &mainWindow);
+  QObject::connect(controller, &Controller::clientDisconnected, invalidCommunicationToast, &Toast::showToast);
+
+
   int ret = app.exec();
   return ret;
 }
