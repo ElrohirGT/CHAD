@@ -700,6 +700,7 @@ signals:
   // Signal to announce UWU_STATE has changed.
   void stateChanged(UWU_ClientState *newState);
   void finished();
+  void selectedUserJustDisconnected();
   // ERRORS
   // The connection to the server was cut unexpectedely.
   void clientDisconnected(int);
