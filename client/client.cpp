@@ -982,7 +982,8 @@ class UWUUserModel : public QAbstractListModel {
 public:
   enum UserRoles {
     UsernameRole = Qt::UserRole + 1,
-    StatusRole = Qt::UserRole + 2
+    StatusRole = Qt::UserRole + 2,
+    StatusIconRole = Qt::UserRole + 3
   };
 
   UWUUserModel(UWU_ClientState &state, QObject *parent = nullptr)
@@ -1021,6 +1022,8 @@ public:
       return QString::fromUtf8(user.username.data, user.username.length);
     } else if (role == StatusRole) {
       return statusToString(user.status);
+    } else if (role == StatusIconRole) {
+      return getStatusIconPath(user.status);
     }
     return QVariant();
   }
@@ -1086,6 +1089,19 @@ private:
 
     return nullptr;
   }
+
+  QString getStatusIconPath(UWU_ConnStatus status) const {
+    switch (status) {
+    case ACTIVE:
+      return QStringLiteral("icons/active.png");
+    case BUSY:
+      return QStringLiteral("icons/busy.png");
+    case INACTIVE:
+      return QStringLiteral("icons/idle.png");
+    default:
+      return QStringLiteral("");
+    }
+  }
 };
 
 class UWUUserDelegate : public QStyledItemDelegate {
@@ -1101,6 +1117,7 @@ public:
 
     QString username = index.data(UWUUserModel::UsernameRole).toString();
     QString status = index.data(UWUUserModel::StatusRole).toString();
+    QString iconPath = index.data(UWUUserModel::StatusIconRole).toString();
 
     if (username.isEmpty()) {
       painter->fillRect(option.rect, QColor(40, 43, 48)); // DARK_300
@@ -1137,9 +1154,23 @@ public:
     QRect statusRect =
         option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
 
+    const int ICONSIZE = 20;
+
+    QRect iconRect(statusRect.left(), statusRect.top(), ICONSIZE, ICONSIZE);
+    statusRect.setLeft(iconRect.right() + 5);
+
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, username);
     painter->setFont(option.font);
     painter->drawText(statusRect, Qt::AlignLeft | Qt::AlignVCenter, status);
+
+    if (!iconPath.isEmpty()) {
+      QPixmap icon(iconPath);
+      if (!icon.isNull()) {
+        painter->drawPixmap(iconRect, icon);
+      } else {
+        qDebug() << "Error: No se pudo cargar el icono:" << iconPath;
+      }
+    }
 
     painter->restore();
   }
