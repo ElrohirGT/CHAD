@@ -6,6 +6,8 @@
 #include <QCloseEvent>
 #include <QDebug>
 #include <QDialog>
+#include <QFont>
+#include <QFontDatabase>
 #include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -1065,8 +1067,8 @@ private:
 class UWUUserDelegate : public QStyledItemDelegate {
   Q_OBJECT
 public:
-  UWUUserDelegate(QString *selectedUsername, QObject *parent = nullptr) 
-    : QStyledItemDelegate(parent), selectedChatUsername(selectedUsername) {}
+  UWUUserDelegate(QString *selectedUsername, QObject *parent = nullptr)
+      : QStyledItemDelegate(parent), selectedChatUsername(selectedUsername) {}
 
   void paint(QPainter *painter, const QStyleOptionViewItem &option,
              const QModelIndex &index) const override {
@@ -1373,6 +1375,16 @@ int main(int argc, char *argv[]) {
   // LAYOUT INITIALIZATION
   // **********************
 
+  // Sent font globally
+  int id = QFontDatabase::addApplicationFont("fonts/ggSansRegular.ttf");
+  if (id != -1) {
+    QString family = QFontDatabase::applicationFontFamilies(id).at(0);
+    QFont customFont(family);
+    QApplication::setFont(customFont);
+  } else {
+    qWarning("Failed to load custom font");
+  }
+
   // Crear la ventana principal
   MainWindow mainWindow;
 
@@ -1387,7 +1399,7 @@ int main(int argc, char *argv[]) {
   chatUsers->setSelectionBehavior(QAbstractItemView::SelectRows);
   chatUsers->setMouseTracking(true);
   chatUsers->viewport()->setMouseTracking(true);
-  
+
   QString selectedUser;
 
   UWUMessageModel *messageModel = new UWUMessageModel();
@@ -1447,9 +1459,8 @@ int main(int argc, char *argv[]) {
   ChatSendButton *sendInput =
       new ChatSendButton(&msg, chatInput, &selectedUser);
 
-      
-      // Generates Widgets
-      QWidget *mainWidget = new QWidget();
+  // Generates Widgets
+  QWidget *mainWidget = new QWidget();
   QWidget *topWidget = new QWidget();
   QWidget *nameWidget = new QWidget();
   QWidget *centralWidget = new QWidget();
@@ -1473,7 +1484,7 @@ int main(int argc, char *argv[]) {
   nameLayout->setContentsMargins(0, 0, 0, 0);
   QHBoxLayout *inputLayout = new QHBoxLayout();
   inputLayout->setContentsMargins(0, 0, 0, 0);
-  
+
   QObject::connect(
       chatUsers->selectionModel(), &QItemSelectionModel::currentRowChanged,
       [&](const QModelIndex &current, const QModelIndex &previous) {
@@ -1487,8 +1498,8 @@ int main(int argc, char *argv[]) {
         } else {
           selectedUser.clear();
         }
-  });
-  
+      });
+
   QLabel *ipLabel = new QLabel(ip);
   ipLabel->setContentsMargins(10, 0, 0, 0);
   ipLabel->setText(QString::fromUtf8(ip));

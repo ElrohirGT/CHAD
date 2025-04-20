@@ -32,5 +32,8 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/icons
         ${CMAKE_CURRENT_BINARY_DIR}/icons
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/fonts
+        ${CMAKE_CURRENT_BINARY_DIR}/fonts
     COMMAND ${CMAKE_COMMAND} -E echo "Build completed for ${PROJECT_NAME}"
 )
