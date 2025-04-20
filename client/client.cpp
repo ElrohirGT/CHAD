@@ -884,11 +884,11 @@ protected:
     QColor circleColor;
 
     if (status == ACTIVE) {
-      circleColor = QColor(0, 0, 255);
+      circleColor = QColor(114, 137, 218); // BLUE
     } else if (status == BUSY) {
-      circleColor = QColor(255, 0, 0);
+      circleColor = QColor(216, 58, 65); // RED
     } else {
-      circleColor = QColor(255, 255, 0);
+      circleColor = QColor(204, 149, 76); // YELLOW
     }
     painter.setBrush(circleColor);
     painter.setPen(Qt::NoPen);
@@ -984,15 +984,25 @@ public:
       : QAbstractListModel(parent), clientState(state) {}
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override {
-    return parent.isValid() ? 0 : clientState.ActiveUsers.length;
+    if (parent.isValid())
+      return 0;
+
+    int logicalRows = clientState.ActiveUsers.length;
+    int extra = 15 - logicalRows;
+    if (extra < 0)
+      extra = 0;
+    return logicalRows + extra;
   }
 
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override {
-    if (!index.isValid() || index.row() < 0 ||
-        index.row() >= clientState.ActiveUsers.length) {
+    if (!index.isValid() || index.row() < 0)
       return QVariant();
-    }
+
+      if (index.row() >= clientState.ActiveUsers.length) {
+        // Empty Row
+        return QVariant();
+      }
 
     const UWU_UserListNode *node = getNodeAt(index.row());
     if (!node || node->is_sentinel) {
@@ -1066,6 +1076,12 @@ public:
     QString username = index.data(UWUUserModel::UsernameRole).toString();
     QString status = index.data(UWUUserModel::StatusRole).toString();
 
+    bool isEmpty = username.isEmpty() && status.isEmpty();
+    if (isEmpty) {
+      painter->fillRect(option.rect, QColor(40, 43, 48)); // DARK_300
+      return;
+    }
+
     QStyleOptionViewItem modifiedOption = option;
     if (selectedChatUsername && username == *selectedChatUsername) {
       modifiedOption.state |= QStyle::State_Selected;
@@ -1075,13 +1091,13 @@ public:
     QColor bgColor;
 
     if (option.state & QStyle::State_Selected) {
-      bgColor = QColor(31, 181, 25); // selected
+      bgColor = QColor(66, 69, 73); // selected (DARK_400)
     } else if (option.state & QStyle::State_MouseOver) {
-      bgColor = QColor(83, 247, 72); // (hover)
+      bgColor = QColor(30, 33, 36); // hover (DARK_200)
     } else {
-      bgColor = QColor(189, 189, 189); // base
+      bgColor = QColor(40, 43, 48); // base (DARK_300)
     }
-    QColor textColor = Qt::black;
+    QColor textColor = QColor(220, 220, 220);
 
     painter->save();
     painter->fillRect(option.rect, bgColor);
@@ -1288,6 +1304,20 @@ public:
 };
 
 #include "client.moc"
+
+/*
+Palette
+
+DARK_200 (30,33,36)
+DARK_300 (40,43,48)
+DARK_400 (66,69,73)
+
+BLUE   (114,137,218)
+GREEN  (64,162,88)
+RED    (216,58,65)
+YELLOW (204,149,76)
+WHITE  (220,220,220)
+*/
 
 int main(int argc, char *argv[]) {
 
@@ -1512,7 +1542,7 @@ int main(int argc, char *argv[]) {
   });
 
   QPalette topPalette = nameLabel->palette();
-  topPalette.setColor(QPalette::Window, QColor(31, 181, 25));
+  topPalette.setColor(QPalette::Window, QColor(40, 43, 48)); // DARK_300
   topWidget->setAutoFillBackground(true);
   topWidget->setPalette(topPalette);
 
