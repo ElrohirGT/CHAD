@@ -995,6 +995,7 @@ public:
     int extra = 15 - logicalRows;
     if (extra < 0)
       extra = 0;
+    
     return logicalRows + extra;
   }
 
@@ -1038,6 +1039,26 @@ public:
     }
   }
 
+  Qt::ItemFlags flags(const QModelIndex &index) const override {
+    if (!index.isValid()) return Qt::NoItemFlags;
+  
+    if (index.row() >= clientState.ActiveUsers.length) {
+      return Qt::ItemIsEnabled;  // fila vacía
+    }
+  
+    const UWU_UserListNode *node = getNodeAt(index.row());
+    if (!node || node->is_sentinel) return Qt::NoItemFlags;
+  
+    const UWU_User &user = node->data;
+    QString username = QString::fromUtf8(user.username.data, user.username.length);
+    
+    if (username.isEmpty()) {
+      return Qt::ItemIsEnabled;
+    }
+  
+    return Qt::ItemIsSelectable | Qt::ItemIsEnabled;
+}
+
 public slots:
   void refreshUserList() {
     QModelIndex topLeft = index(0, 0);
@@ -1080,12 +1101,11 @@ public:
     QString username = index.data(UWUUserModel::UsernameRole).toString();
     QString status = index.data(UWUUserModel::StatusRole).toString();
 
-    bool isEmpty = username.isEmpty() && status.isEmpty();
-    if (isEmpty) {
+    if (username.isEmpty()) {
       painter->fillRect(option.rect, QColor(40, 43, 48)); // DARK_300
       return;
     }
-
+    
     QStyleOptionViewItem modifiedOption = option;
     if (selectedChatUsername && username == *selectedChatUsername) {
       modifiedOption.state |= QStyle::State_Selected;
@@ -1110,6 +1130,7 @@ public:
     QFont font = option.font;
     font.setBold(true);
     painter->setFont(font);
+    font.setPointSize(14);
 
     QRect nameRect = option.rect.adjusted(5, 5, -5, -option.rect.height() / 2);
     QRect statusRect =
@@ -1223,40 +1244,100 @@ public:
   }
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override {
-    if (!chatHistory || parent.isValid())
+    if (parent.isValid())
       return 0;
-    return chatHistory->count;
+
+    int realMessages = chatHistory ? chatHistory->count : 0;
+    int minRows = 15;
+    return std::max(realMessages, minRows);
   }
 
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override {
-    if (!chatHistory || !index.isValid() ||
-        index.row() >= (int)chatHistory->count)
+    if (!index.isValid() || role != Qt::DisplayRole)
       return QVariant();
 
-    if (role == Qt::DisplayRole) {
-      UWU_ChatEntry entry = chatHistory->messages[index.row()];
-      QString sender = QString::fromUtf8(entry.origin_username.data,
-                                         entry.origin_username.length);
-      QString content =
-          QString::fromUtf8(entry.content.data, entry.content.length);
+    if (!chatHistory || index.row() >= chatHistory->count)
+      return QString("");
 
-      qDebug() << "Message #" << index.row();
-      qDebug() << "Sender raw:"
-               << QByteArray(entry.origin_username.data,
-                             entry.origin_username.length);
-      qDebug() << "Content raw:"
-               << QByteArray(entry.content.data, entry.content.length);
+    UWU_ChatEntry entry = chatHistory->messages[index.row()];
+    QString sender = QString::fromUtf8(entry.origin_username.data,
+                                       entry.origin_username.length);
+    QString content =
+        QString::fromUtf8(entry.content.data, entry.content.length);
 
-      return QString("%1: %2").arg(sender, content);
-    }
+    return QString("%1: %2").arg(sender, content);
+  }
 
-    return QVariant();
+  Qt::ItemFlags flags(const QModelIndex &index) const override {
+    if (!chatHistory || index.row() >= chatHistory->count)
+      return Qt::NoItemFlags; // No se puede seleccionar ni interactuar
+
+    return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
   }
 
 private:
   UWU_ChatHistory *chatHistory;
 };
+
+class UWUMessageDelegate : public QStyledItemDelegate {
+  public:
+    UWUMessageDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+  
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override {
+      painter->save();
+  
+      QString fullText = index.data(Qt::DisplayRole).toString();
+  
+      QString sender;
+      QString message;
+  
+      int separatorIndex = fullText.indexOf(": ");
+      if (separatorIndex != -1) {
+        sender = fullText.left(separatorIndex);
+        message = fullText.mid(separatorIndex + 2);
+      } else {
+        sender = "";
+        message = fullText;
+      }
+
+      if (sender == "") {
+        painter->fillRect(option.rect, QColor(30, 33, 36)); // DARK_300
+        painter->restore();
+        return;
+      }
+  
+      QRect rect = option.rect;
+      QColor backgroundColor = (option.state & QStyle::State_Selected)
+                                   ? QColor(30, 33, 36)
+                                   : QColor(30, 33, 36);
+      painter->fillRect(rect, backgroundColor);
+  
+      QFont senderFont = painter->font();
+      senderFont.setBold(true);
+      senderFont.setPointSize(15);
+      painter->setFont(senderFont);
+      painter->setPen(QColor(114, 137, 218)); // Azul Discord
+      painter->drawText(rect.adjusted(10, 5, -10, -5), sender);
+  
+      QFont messageFont = painter->font();
+      messageFont.setBold(false);
+      messageFont.setPointSize(14);
+      painter->setFont(messageFont);
+      painter->setPen(QColor(220, 220, 220)); // Blanco
+      painter->drawText(rect.adjusted(10, 25, -10, -5), message);
+  
+      painter->restore();
+    }
+  
+    QSize sizeHint(const QStyleOptionViewItem &option,
+                   const QModelIndex &index) const override {
+      Q_UNUSED(option);
+      Q_UNUSED(index);
+      return QSize(100, 60); // Altura fija por mensaje
+    }
+  };
 
 class Toast : public QLabel {
 public:
@@ -1411,9 +1492,18 @@ int main(int argc, char *argv[]) {
   QString selectedUser;
 
   UWUMessageModel *messageModel = new UWUMessageModel();
+  UWUMessageDelegate *messageDelegate = new UWUMessageDelegate();
   QListView *chatMessages = new QListView();
   chatMessages->setModel(messageModel);
+  chatMessages->setItemDelegate(messageDelegate);
+  chatMessages->setUniformItemSizes(true);  // Opcional si todas las filas tienen el mismo alto
+  chatMessages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  chatMessages->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  chatMessages->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+  chatMessages->setModel(messageModel);
   chatMessages->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  chatMessages->setAutoScroll(false);
+  chatMessages->setSpacing(0); // o algo como 5 si querés separación
 
   QObject::connect(
       controller, &Controller::stateChanged, [&](UWU_ClientState *newState) {
