@@ -85,8 +85,15 @@ of the complete list of all chats.
 
 ### Creation of a connection with all it's information:
 
+Here's a shortcut to the piece of code that handles the creation of a new client
+connection on our server.
+
 https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L906
 
 ### Message passing to the appropriate thread:
 
 https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L1096
+
+### Message handling on each thread:
+
+https://github.com/ElrohirGT/CHAD/blob/5953d85f212ecc7f9bd32f5372fa910497d05b99/server/src/main.c#L333
