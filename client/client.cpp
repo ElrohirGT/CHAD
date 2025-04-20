@@ -848,6 +848,8 @@ public:
     connect(controller, &Controller::stateChanged, this,
             &StatusButton::updateStatus);
     connect(this, &QPushButton::clicked, this, &StatusButton::clickSlot);
+
+    setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
   }
 
 public slots:
@@ -1137,6 +1139,9 @@ public:
       : QLineEdit(parent), message(msg) {
     setPlaceholderText("Write a message");
     connect(this, &QLineEdit::textChanged, this, &ChatLineEdit::onTextChanged);
+
+    setStyleSheet("height: 40px; padding-left: 10px; background-color: rgb(66,69,73)");
+    setMaxLength(255);
   }
 
 private slots:
@@ -1158,8 +1163,11 @@ public:
       : QPushButton(parent), message(msg), inputField(input),
         selectedUser(selectedUser) {
     setMaximumWidth(100);
-    setIcon(QIcon("icons/send-icond.png"));
+    setIcon(QIcon("icons/send.png"));
     connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
+
+    setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+    setIconSize(QSize(25,25));
   }
 
 private slots:
@@ -1508,9 +1516,11 @@ int main(int argc, char *argv[]) {
   nameLabel->setStyleSheet("font-size: 25px;");
 
   QPushButton *helpButton = new QPushButton();
-  helpButton->setIcon(QIcon("icons/question-icon.jpg"));
+  helpButton->setIcon(QIcon("icons/help.png"));
   helpButton->setMaximumWidth(50);
   helpButton->setContentsMargins(0, 0, 0, 100);
+  helpButton->setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+  helpButton->setIconSize(QSize(25,25));
 
   //------------------------
   // Modal for help
