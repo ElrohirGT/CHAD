@@ -860,8 +860,11 @@ public slots:
     }
 
     externalStatus = status;
-
     change_status_handler(status);
+    // If changing status to active ask for messages again.
+    if (status == ACTIVE && UWU_STATE->currentChat != NULL) {
+      get_messages_handler(&UWU_STATE->currentChat->channel_name);
+    }
     update();
   }
 
