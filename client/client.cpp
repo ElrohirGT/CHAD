@@ -907,15 +907,11 @@ private:
 class UWUUserQT : public QWidget {
   Q_OBJECT
 public:
-  UWUUserQT(const char username[], const char ip[], QWidget *parent = nullptr)
+  UWUUserQT(const char username[], UWU_ConnStatus status, QWidget *parent = nullptr)
       : QWidget(parent) {
 
     std::strncpy(username_, username, sizeof(username_) - 1);
-
     username_[sizeof(username_) - 1] = '\0';
-
-    std::strncpy(ip_, ip, sizeof(ip_) - 1);
-    ip_[sizeof(ip_) - 1] = '\0';
 
     QPalette UWUUSerQTPallete = this->palette();
     UWUUSerQTPallete.setColor(QPalette::Window, QColor(189, 189, 189));
@@ -924,16 +920,23 @@ public:
 
     QVBoxLayout *verticalLayout = new QVBoxLayout(this);
     verticalLayout->setContentsMargins(0, 0, 0, 0);
-    QLabel *nameLabel = new QLabel(username);
-    QLabel *ipLabel = new QLabel(ip);
+    QLabel *nameLabel = new QLabel(username_);
+
+    statusLabel_ = new QLabel(statusToString(status_));
+    statusLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    ipLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     verticalLayout->addWidget(nameLabel);
-    verticalLayout->addWidget(ipLabel);
+    verticalLayout->addWidget(statusLabel_);
 
     setStyleSheet("padding: 5px");
+  }
+
+  void setStatus(UWU_ConnStatus newStatus) {
+    status_ = newStatus;
+    statusLabel_->setText(statusToString(status_));
+    update();
   }
 
 protected:
@@ -946,13 +949,32 @@ protected:
 
 private:
   char username_[255];
-  char ip_[255];
+  UWU_ConnStatus status_;
+  QLabel *statusLabel_;
+
+  QString statusToString(UWU_ConnStatus status) const {
+    switch (status) {
+      case DISCONNETED:
+        return QStringLiteral("Desconectado");
+      case ACTIVE:
+        return QStringLiteral("Activo");
+      case BUSY:
+        return QStringLiteral("Ocupado");
+      case INACTIVE:
+        return QStringLiteral("Inactivo");
+      default:
+        return QStringLiteral("Estado desconocido");
+    }
+  }
 };
 
 class UWUUserModel : public QAbstractListModel {
   Q_OBJECT
 public:
-  enum UserRoles { UsernameRole = Qt::UserRole + 1, IpRole = Qt::UserRole + 2 };
+  enum UserRoles { 
+    UsernameRole = Qt::UserRole + 1, 
+    StatusRole = Qt::UserRole + 2 
+  };
 
   UWUUserModel(UWU_ClientState &state, QObject *parent = nullptr)
       : QAbstractListModel(parent), clientState(state) {}
@@ -975,14 +997,27 @@ public:
 
     const UWU_User &user = node->data;
 
-    if (role == Qt::DisplayRole) {
+    if (role == Qt::DisplayRole || role == UsernameRole) {
       return QString::fromUtf8(user.username.data);
-    } else if (role == UsernameRole) {
-      return QString::fromUtf8(user.username.data);
-    } else if (role == IpRole) {
-      return QString::fromUtf8("fixme");
-    }
+  } else if (role == StatusRole) {
+      return statusToString(user.status);
+  }
     return QVariant();
+  }
+
+  QString statusToString(UWU_ConnStatus status) const {
+    switch (status) {
+      case DISCONNETED:
+        return QStringLiteral("Desconectado");
+      case ACTIVE:
+        return QStringLiteral("Activo");
+      case BUSY:
+        return QStringLiteral("Ocupado");
+      case INACTIVE:
+        return QStringLiteral("Inactivo");
+      default:
+        return QStringLiteral("Estado desconocido");
+      }
   }
 
 public slots:
@@ -1023,9 +1058,9 @@ public:
       return;
 
     QString username = index.data(UWUUserModel::UsernameRole).toString();
-    QString ip = index.data(UWUUserModel::IpRole).toString();
+    QString status = index.data(UWUUserModel::StatusRole).toString();
 
-    // Colores según hover
+    // hover colors
     QColor bgColor;
 
     if (option.state & QStyle::State_Selected) {
@@ -1046,18 +1081,18 @@ public:
     painter->setFont(font);
 
     QRect nameRect = option.rect.adjusted(5, 5, -5, -option.rect.height() / 2);
-    QRect ipRect = option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
+    QRect statusRect = option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
 
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, username);
-    painter->setFont(option.font); // IP sin negrita
-    painter->drawText(ipRect, Qt::AlignLeft | Qt::AlignVCenter, ip);
+    painter->setFont(option.font);
+    painter->drawText(statusRect, Qt::AlignLeft | Qt::AlignVCenter, status);
 
     painter->restore();
   }
 
   QSize sizeHint(const QStyleOptionViewItem &option,
                  const QModelIndex &index) const override {
-    UWUUserQT tempWidget("dummy", "dummy");
+    UWUUserQT tempWidget("dummy", ACTIVE);
     return QSize(option.rect.width(), tempWidget.sizeHint().height());
   }
 };
