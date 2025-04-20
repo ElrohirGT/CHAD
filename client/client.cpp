@@ -844,12 +844,12 @@ public:
     status = externalStatus;
 
     setMaximumWidth(50);
-    setContentsMargins(0, 0, 0, 100);
 
     connect(controller, &Controller::stateChanged, this,
             &StatusButton::updateStatus);
     connect(this, &QPushButton::clicked, this, &StatusButton::clickSlot);
 
+    updateIcon();
     setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
   }
 
@@ -870,40 +870,36 @@ public slots:
     if (status == ACTIVE && UWU_STATE->currentChat != NULL) {
       get_messages_handler(&UWU_STATE->currentChat->channel_name);
     }
+    updateIcon();
     update();
   }
 
   void updateStatus(UWU_ClientState *newStatus) {
     status = newStatus->CurrentUser.status;
     externalStatus = status;
+    updateIcon();
     update();
   }
 
 protected:
-  void paintEvent(QPaintEvent *event) override {
-    QPushButton::paintEvent(event);
-
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    QColor circleColor;
-
-    if (status == ACTIVE) {
-      circleColor = QColor(114, 137, 218); // BLUE
-    } else if (status == BUSY) {
-      circleColor = QColor(216, 58, 65); // RED
-    } else {
-      circleColor = QColor(204, 149, 76); // YELLOW
-    }
-    painter.setBrush(circleColor);
-    painter.setPen(Qt::NoPen);
-
-    int radius = 10;
-    int centerX = width() / 2;
-    int centerY = height() / 2;
-
-    painter.drawEllipse(QPoint(centerX, centerY), radius, radius);
+void updateIcon() {
+  QString iconPath;
+  switch (status) {
+  case ACTIVE:
+    iconPath = QStringLiteral("icons/active.png");
+    break;
+  case BUSY:
+    iconPath = QStringLiteral("icons/busy.png");
+    break;
+  case INACTIVE:
+    iconPath = QStringLiteral("icons/idle.png");
+    break;
+  default:
+    iconPath = QStringLiteral("");
+    break;
   }
+  setIcon(QIcon(iconPath));
+}
 
   // Class attributes
 private:
@@ -1161,14 +1157,16 @@ public:
 
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, username);
     painter->setFont(option.font);
-    painter->drawText(statusRect, Qt::AlignLeft | Qt::AlignVCenter, status);
-
-    if (!iconPath.isEmpty()) {
-      QPixmap icon(iconPath);
-      if (!icon.isNull()) {
-        painter->drawPixmap(iconRect, icon);
-      } else {
-        qDebug() << "Error: No se pudo cargar el icono:" << iconPath;
+    if (username != "~") {
+      painter->drawText(statusRect, Qt::AlignLeft | Qt::AlignVCenter, status);
+  
+      if (!iconPath.isEmpty()) {
+        QPixmap icon(iconPath);
+        if (!icon.isNull()) {
+          painter->drawPixmap(iconRect, icon);
+        } else {
+          qDebug() << "Error: No se pudo cargar el icono:" << iconPath;
+        }
       }
     }
 
