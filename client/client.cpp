@@ -379,6 +379,8 @@ public:
       }
 
       printf("totalUsers: %d\n", UWU_STATE->ActiveUsers.length);
+
+      emit msgPrococessed();
     } break;
     case GOT_USER:
       /* code */
@@ -402,6 +404,8 @@ public:
         register_user(&user, &UWU_STATE->ActiveUsers, &UWU_STATE->Chats);
         printf("INSERTING %.*s\n", username_length, req_username.data);
       }
+
+      emit msgPrococessed();
     } break;
     case CHANGED_STATUS: {
       size_t username_length = msg.data[1];
@@ -439,23 +443,27 @@ public:
         if (should_delete) {
           printf("DELETING %.*s \n", userToDelete->username.length,
                  userToDelete->username.data);
-          unregister_user(userToDelete, &UWU_STATE->ActiveUsers,
-                          &UWU_STATE->Chats);
+
+          if (UWU_String_equal(&userToDelete->username,
+                               &UWU_STATE->currentChat->channel_name)) {
+            emit selectedUserDisconnected();
+            UWU_STATE->currentChat = NULL;
+            unregister_user(userToDelete, &UWU_STATE->ActiveUsers,
+                            &UWU_STATE->Chats);
+            break;
+          } else {
+            unregister_user(userToDelete, &UWU_STATE->ActiveUsers,
+                            &UWU_STATE->Chats);
+          }
 
           printf("User removed, totalUsers: %d\n",
                  UWU_STATE->ActiveUsers.length);
         } else if (!found_it) {
-          UWU_Err err = NO_ERROR;
-          UWU_User user = {.username = req_username, .status = req_status};
-          struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
-
-          UWU_UserList_insertEnd(&UWU_STATE->ActiveUsers, &node, err);
-          if (err != NO_ERROR) {
-            UWU_PANIC("Fatal: Couldn't add username to active usernames!");
-            return;
-          }
+          printf("User not found to change status");
         }
       }
+
+      emit msgPrococessed();
     } break;
     case GOT_MESSAGE: {
       if (UWU_STATE->CurrentUser.status == BUSY) {
@@ -508,6 +516,8 @@ public:
 
       free(username);
       free(chat);
+
+      emit msgPrococessed();
     } break;
     case GOT_MESSAGES: {
       if (UWU_STATE->CurrentUser.status == BUSY) {
@@ -556,7 +566,7 @@ public:
 
         offset = offset + lenUsername + lenChat + 2;
       }
-
+      emit msgPrococessed();
     } break;
     default:
       fprintf(stderr, "Error: Unrecognized message from server!\n");
@@ -564,8 +574,6 @@ public:
       break;
     }
     UWU_String_freeWithMalloc(&msg);
-
-    emit msgPrococessed();
   }
 
 private:
@@ -577,6 +585,8 @@ private:
 signals:
   // Signal sent when a message is done processing.
   void msgPrococessed();
+
+  void selectedUserDisconnected();
   // Sent when received an error from the server.
   void errorMsg(int err);
 };
@@ -643,6 +653,14 @@ public slots:
                        &Controller::onMsgProcessed, Qt::QueuedConnection);
       QObject::connect(task, &MessageTask::errorMsg, controller,
                        &Controller::onErrorMsg, Qt::QueuedConnection);
+
+      // QObject::connect(task, &MessageTask::selectedUserDisconnected,
+      // controller,
+      //                  &Controller::onSelectedClientDeleted,
+      //                  Qt::QueuedConnection);
+      QObject::connect(
+          task, &MessageTask::selectedUserDisconnected,
+          [controller]() { controller->onSelectedClientDeleted(); });
       QThreadPool::globalInstance()->start(task);
     }
   }
@@ -694,6 +712,11 @@ public slots:
       emit gotInvalidMessage(3000);
       break;
     }
+  }
+
+  void onSelectedClientDeleted() {
+    printf("Current client is being disconnected\n");
+    emit selectedUserJustDisconnected();
   }
 
 signals:
