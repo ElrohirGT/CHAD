@@ -1637,6 +1637,7 @@ int main(int argc, char *argv[]) {
   } else {
     qWarning("Failed to load custom font");
   }
+  app.setStyleSheet("QWidget { color: white; }");
 
   // Crear la ventana principal
   MainWindow mainWindow;
