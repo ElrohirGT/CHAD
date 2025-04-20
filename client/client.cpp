@@ -33,8 +33,12 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QToolButton>
 #include <QVariant>
 #include <QWidget>
+#include <QMenu>
+#include <QAction>
+#include <QScrollArea>
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
@@ -1183,27 +1187,149 @@ private:
   QString *selectedChatUsername;
 };
 
-class ChatLineEdit : public QLineEdit {
+class ChatLineEdit : public QTextEdit {
   Q_OBJECT
 public:
   ChatLineEdit(QString *msg, QWidget *parent = nullptr)
-      : QLineEdit(parent), message(msg) {
-    setPlaceholderText("Write a message");
-    connect(this, &QLineEdit::textChanged, this, &ChatLineEdit::onTextChanged);
+      : QTextEdit(parent), message(msg) {
+      setPlaceholderText("Write a message");
+      connect(this, &QTextEdit::textChanged, this, &ChatLineEdit::onTextChanged);
+      setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+      setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+      setFixedHeight(40);
+      setStyleSheet("padding-left: 10px; background-color: rgb(66,69,73); padding-top: 4px");
 
-    setStyleSheet("height: 40px; padding-left: 10px; background-color: rgb(66,69,73)");
-    setMaxLength(255);
+      // Establecer la fuente predeterminada para texto
+      QFont textFont;
+      textFont.setFamily("ggSansRegular");
+      // Asegúrate de que la ruta a la fuente sea correcta y que la fuente se haya cargado
+      if (QFontDatabase::addApplicationFont("fonts/ggSansRegular.ttf") != -1) {
+          textFont.setFamily("ggSansRegular");
+      } else {
+          qWarning("Failed to load ggSansRegular font. Using system default.");
+      }
+      setFont(textFont);
   }
 
+signals:
+  void emojiSelected(const QString &emoji);
+
 private slots:
-  void onTextChanged(const QString &text) {
-    if (message) {
-      *message = text;
-    }
+  void onTextChanged() {
+      if (message) {
+          *message = toPlainText();
+      }
+  }
+
+public slots:
+  void insertEmoji(const QString &emoji) {
+      QTextCursor cursor = textCursor();
+      QTextCharFormat emojiFormat;
+      QFont emojiFont("Segoe UI Emoji");
+      emojiFormat.setFont(emojiFont);
+      cursor.insertText(emoji, emojiFormat);
+      setTextCursor(cursor);
   }
 
 private:
   QString *message;
+};
+
+
+class EmojiPickerDialog : public QDialog {
+  Q_OBJECT
+public:
+  EmojiPickerDialog(QWidget *parent = nullptr) : QDialog(parent) {
+    setWindowTitle("Seleccionar Emoji");
+    setModal(true); // Hacerlo un diálogo modal
+
+    QScrollArea *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+
+    QWidget *emojiContainer = new QWidget(scrollArea);
+    QGridLayout *gridLayout = new QGridLayout(emojiContainer);
+    gridLayout->setAlignment(Qt::AlignTop);
+
+    // Lista de emojis (puedes extenderla enormemente)
+    QStringList emojis = {
+      "😊", "😂", "❤️", "👍", "🐱", "☕", "🎵", "🌍", "💻",
+      "😀", "😃", "😄", "😁", "😆", "😅", "😍", "😘", "😗", "😙", "😚",
+      "😇", "😎", "😞", "😟", "😮", "😯", "😲", "😥", "😓",
+      "😒", "😔", "😢", "😭", "😨", "😰", "🥴", "🤯", "🤬", "😤",
+      "🤪", "🤨", "🧐", "🤓", "🥸", "🤩", "🥳", "🥺", "😬",
+      "🥶", "🥵", "🤢", "🤮", "🤧", "🤕", "🤥", "🤫", "🤭", "🫣",
+      "🙁"
+  };
+    QFont emojiFont = font();
+    emojiFont.setPointSize(20); // Aumentar el tamaño de la fuente
+    emojiFont.setFamily("Segoe UI Emoji");
+
+    int row = 0;
+    int col = 0;
+    for (const QString &emoji : emojis) {
+QPushButton *emojiButton = new QPushButton(emoji);
+      emojiButton->setFixedSize(30, 30);
+      emojiButton->setFont(emojiFont); // Establecer la fuente más grande
+      gridLayout->addWidget(emojiButton, row, col);
+      connect(emojiButton, &QPushButton::clicked, this, &EmojiPickerDialog::emojiClicked);
+
+
+      col++;
+      if (col > 15) { // Número de columnas en el grid
+        col = 0;
+        row++;
+      }
+    }
+
+    emojiContainer->setLayout(gridLayout);
+    scrollArea->setWidget(emojiContainer);
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    mainLayout->addWidget(scrollArea);
+    setLayout(mainLayout);
+  }
+
+signals:
+  void emojiSelected(const QString &emoji);
+
+private slots:
+  void emojiClicked() {
+    QPushButton *clickedButton = qobject_cast<QPushButton*>(sender());
+    if (clickedButton) {
+      emit emojiSelected(clickedButton->text());
+      accept(); // Cierra el diálogo con QDialog::Accepted
+    }
+  }
+};
+
+class EmojiButton : public QToolButton {
+  Q_OBJECT
+public:
+  EmojiButton(ChatLineEdit *lineEdit, QWidget *parent = nullptr)
+      : QToolButton(parent), chatLineEdit(lineEdit) {
+    setIcon(QIcon("icons/emoji.png"));
+    setStyleSheet("background-color: transparent; border: none; width: 40px; height: 40px;");
+    setIconSize(QSize(25, 25));
+    connect(this, &QToolButton::clicked, this, &EmojiButton::showEmojiPickerDialog);
+
+    setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+  }
+
+private slots:
+  void showEmojiPickerDialog() {
+    EmojiPickerDialog *dialog = new EmojiPickerDialog(this);
+    connect(dialog, &EmojiPickerDialog::emojiSelected, this, &EmojiButton::insertEmojiToLineEdit);
+    dialog->open(); // Muestra el diálogo modal
+  }
+
+  void insertEmojiToLineEdit(const QString &emoji) {
+    if (chatLineEdit) {
+      chatLineEdit->insertEmoji(emoji);
+    }
+  }
+
+private:
+  ChatLineEdit *chatLineEdit;
 };
 
 class ChatSendButton : public QPushButton {
@@ -1345,6 +1471,7 @@ class UWUMessageDelegate : public QStyledItemDelegate {
       painter->fillRect(rect, backgroundColor);
   
       QFont senderFont = painter->font();
+      senderFont.setFamily("Segoe UI Emoji");
       senderFont.setBold(true);
       senderFont.setPointSize(15);
       painter->setFont(senderFont);
@@ -1583,6 +1710,9 @@ int main(int argc, char *argv[]) {
   // Create text input
   ChatLineEdit *chatInput = new ChatLineEdit(&msg);
 
+  // Create emoji button
+  EmojiButton *emojiButton = new EmojiButton(chatInput);
+
   // Create button to send message
   ChatSendButton *sendInput =
       new ChatSendButton(&msg, chatInput, &selectedUser);
@@ -1620,6 +1750,7 @@ int main(int argc, char *argv[]) {
           selectedUser = current.data(UWUUserModel::UsernameRole).toString();
           qDebug() << "Selected user:" << selectedUser;
 
+          inputLayout->addWidget(emojiButton);
           inputLayout->addWidget(chatInput);
           inputLayout->addWidget(sendInput);
           inputWidget->update();
