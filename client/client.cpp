@@ -6,6 +6,7 @@
 #include <QCloseEvent>
 #include <QDebug>
 #include <QDialog>
+#include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -18,14 +19,13 @@
 #include <QMutexLocker>
 #include <QObject>
 #include <QPainter>
+#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QRunnable>
-#include <QString>
 #include <QScreen>
+#include <QString>
 #include <QStringListModel>
 #include <QStyledItemDelegate>
-#include <QPropertyAnimation>
-#include <QGraphicsOpacityEffect>
 #include <QTextEdit>
 #include <QThread>
 #include <QThreadPool>
@@ -907,7 +907,8 @@ private:
 class UWUUserQT : public QWidget {
   Q_OBJECT
 public:
-  UWUUserQT(const char username[], UWU_ConnStatus status, QWidget *parent = nullptr)
+  UWUUserQT(const char username[], UWU_ConnStatus status,
+            QWidget *parent = nullptr)
       : QWidget(parent) {
 
     std::strncpy(username_, username, sizeof(username_) - 1);
@@ -954,16 +955,16 @@ private:
 
   QString statusToString(UWU_ConnStatus status) const {
     switch (status) {
-      case DISCONNETED:
-        return QStringLiteral("Desconectado");
-      case ACTIVE:
-        return QStringLiteral("Activo");
-      case BUSY:
-        return QStringLiteral("Ocupado");
-      case INACTIVE:
-        return QStringLiteral("Inactivo");
-      default:
-        return QStringLiteral("Estado desconocido");
+    case DISCONNETED:
+      return QStringLiteral("Desconectado");
+    case ACTIVE:
+      return QStringLiteral("Activo");
+    case BUSY:
+      return QStringLiteral("Ocupado");
+    case INACTIVE:
+      return QStringLiteral("Inactivo");
+    default:
+      return QStringLiteral("Estado desconocido");
     }
   }
 };
@@ -971,9 +972,9 @@ private:
 class UWUUserModel : public QAbstractListModel {
   Q_OBJECT
 public:
-  enum UserRoles { 
-    UsernameRole = Qt::UserRole + 1, 
-    StatusRole = Qt::UserRole + 2 
+  enum UserRoles {
+    UsernameRole = Qt::UserRole + 1,
+    StatusRole = Qt::UserRole + 2
   };
 
   UWUUserModel(UWU_ClientState &state, QObject *parent = nullptr)
@@ -999,25 +1000,25 @@ public:
 
     if (role == Qt::DisplayRole || role == UsernameRole) {
       return QString::fromUtf8(user.username.data, user.username.length);
-  } else if (role == StatusRole) {
+    } else if (role == StatusRole) {
       return statusToString(user.status);
-  }
+    }
     return QVariant();
   }
 
   QString statusToString(UWU_ConnStatus status) const {
     switch (status) {
-      case DISCONNETED:
-        return QStringLiteral("Desconectado");
-      case ACTIVE:
-        return QStringLiteral("Activo");
-      case BUSY:
-        return QStringLiteral("Ocupado");
-      case INACTIVE:
-        return QStringLiteral("Inactivo");
-      default:
-        return QStringLiteral("Estado desconocido");
-      }
+    case DISCONNETED:
+      return QStringLiteral("Desconectado");
+    case ACTIVE:
+      return QStringLiteral("Activo");
+    case BUSY:
+      return QStringLiteral("Ocupado");
+    case INACTIVE:
+      return QStringLiteral("Inactivo");
+    default:
+      return QStringLiteral("Estado desconocido");
+    }
   }
 
 public slots:
@@ -1081,7 +1082,8 @@ public:
     painter->setFont(font);
 
     QRect nameRect = option.rect.adjusted(5, 5, -5, -option.rect.height() / 2);
-    QRect statusRect = option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
+    QRect statusRect =
+        option.rect.adjusted(5, option.rect.height() / 2, -5, -5);
 
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, username);
     painter->setFont(option.font);
@@ -1218,54 +1220,59 @@ private:
 };
 
 class Toast : public QLabel {
-  public:
-      Toast(const QString& text, QWidget* parent = nullptr, Qt::WindowFlags f = Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint)
-          : QLabel(text, parent, f) {
-          setAlignment(Qt::AlignCenter);
-          setStyleSheet("background-color: rgba(0, 0, 0, 150); color: white; padding: 10px; border-radius: 5px; font-size: 50px");
-          setAttribute(Qt::WA_TranslucentBackground);
-          hide();
+public:
+  Toast(const QString &text, QWidget *parent = nullptr,
+        Qt::WindowFlags f = Qt::FramelessWindowHint | Qt::Tool |
+                            Qt::WindowStaysOnTopHint)
+      : QLabel(text, parent, f) {
+    setAlignment(Qt::AlignCenter);
+    setStyleSheet("background-color: rgba(0, 0, 0, 150); color: white; "
+                  "padding: 10px; border-radius: 5px; font-size: 50px");
+    setAttribute(Qt::WA_TranslucentBackground);
+    hide();
+  }
+
+  void showToast(int duration) {
+    if (isVisible()) {
+      hide();
+    }
+
+    if (parentWidget()) {
+      QWidget *parent = parentWidget();
+      QPoint parentCenter = parent->geometry().center();
+      int x = parentCenter.x() - width() / 2;
+      int y = parentCenter.y() - height() / 2 - 50;
+      move(x, y);
+    } else {
+      QScreen *screen = QGuiApplication::primaryScreen();
+      if (screen) {
+        QRect screenGeometry = screen->geometry();
+        int x = (screenGeometry.width() - width()) / 2;
+        int y = screenGeometry.height() / 4;
+        move(x, y);
       }
-  
-      void showToast(int duration) {
-          if (isVisible()) {
-              hide();
-          }
-  
-          if (parentWidget()) { 
-            QWidget* parent = parentWidget();
-            QPoint parentCenter = parent->geometry().center();
-            int x = parentCenter.x() - width() / 2;
-            int y = parentCenter.y() - height() / 2 - 50; 
-            move(x, y);
-        } else {
-            QScreen* screen = QGuiApplication::primaryScreen();
-            if (screen) {
-                QRect screenGeometry = screen->geometry();
-                int x = (screenGeometry.width() - width()) / 2;
-                int y = screenGeometry.height() / 4;
-                move(x, y);
-            }
-        }
-  
-          show();
-          setGraphicsEffect(new QGraphicsOpacityEffect(this));
-          QPropertyAnimation* animation = new QPropertyAnimation(graphicsEffect(), "opacity");
-          animation->setDuration(500);
-          animation->setStartValue(0.0);
-          animation->setEndValue(1.0);
-          animation->start(QAbstractAnimation::DeleteWhenStopped);
-  
-          QTimer::singleShot(duration, this, [this]() {
-              QPropertyAnimation* animation = new QPropertyAnimation(graphicsEffect(), "opacity");
-              animation->setDuration(500);
-              animation->setStartValue(1.0);
-              animation->setEndValue(0.0);
-              animation->start(QAbstractAnimation::DeleteWhenStopped);
-              connect(animation, &QPropertyAnimation::finished, this, &Toast::hide);
-          });
-      }
-  };
+    }
+
+    show();
+    setGraphicsEffect(new QGraphicsOpacityEffect(this));
+    QPropertyAnimation *animation =
+        new QPropertyAnimation(graphicsEffect(), "opacity");
+    animation->setDuration(500);
+    animation->setStartValue(0.0);
+    animation->setEndValue(1.0);
+    animation->start(QAbstractAnimation::DeleteWhenStopped);
+
+    QTimer::singleShot(duration, this, [this]() {
+      QPropertyAnimation *animation =
+          new QPropertyAnimation(graphicsEffect(), "opacity");
+      animation->setDuration(500);
+      animation->setStartValue(1.0);
+      animation->setEndValue(0.0);
+      animation->start(QAbstractAnimation::DeleteWhenStopped);
+      connect(animation, &QPropertyAnimation::finished, this, &Toast::hide);
+    });
+  }
+};
 
 #include "client.moc"
 
@@ -1524,29 +1531,38 @@ int main(int argc, char *argv[]) {
 
   // TOAST for showing errors
   // The message received from the server does not figure out on the protocol
-  Toast* undeclaredMessageToast = new Toast("MESSAGE NOT FOUND IN THIS PROTOCOL!", &mainWindow);
-  QObject::connect(controller, &Controller::gotInvalidMessage, undeclaredMessageToast, &Toast::showToast);
+  Toast *undeclaredMessageToast =
+      new Toast("MESSAGE NOT FOUND IN THIS PROTOCOL!", &mainWindow);
+  QObject::connect(controller, &Controller::gotInvalidMessage,
+                   undeclaredMessageToast, &Toast::showToast);
 
   // The user you tried to access doesn't exist!
-  Toast* invalidUserToast = new Toast("THIS USER DOESN'T EXIST!", &mainWindow);
-  QObject::connect(controller, &Controller::userNotFound, invalidUserToast, &Toast::showToast);
+  Toast *invalidUserToast = new Toast("THIS USER DOESN'T EXIST!", &mainWindow);
+  QObject::connect(controller, &Controller::userNotFound, invalidUserToast,
+                   &Toast::showToast);
 
   // The status you want to change to doesn't exist!
-  Toast* invalidStatusToast = new Toast("THE STATUS DOESN'T EXIST!", &mainWindow);
-  QObject::connect(controller, &Controller::invalidStatus, invalidStatusToast, &Toast::showToast);
+  Toast *invalidStatusToast =
+      new Toast("THE STATUS DOESN'T EXIST!", &mainWindow);
+  QObject::connect(controller, &Controller::invalidStatus, invalidStatusToast,
+                   &Toast::showToast);
 
   // The message you wish to send is empty!
-  Toast* invalidMessageToast = new Toast("INVALID EMPTY MESSAGE!", &mainWindow);
-  QObject::connect(controller, &Controller::emptyMessage, invalidMessageToast, &Toast::showToast);
+  Toast *invalidMessageToast = new Toast("INVALID EMPTY MESSAGE!", &mainWindow);
+  QObject::connect(controller, &Controller::emptyMessage, invalidMessageToast,
+                   &Toast::showToast);
 
   // You're trying to communicate with a disconnected user!
-  Toast* invalidCommunicationToast = new Toast("CAN'T COMMUNICATE TO DISCONNECTED USER!", &mainWindow);
-  QObject::connect(controller, &Controller::userAlreadyDisconnected, invalidCommunicationToast, &Toast::showToast);
-  
-  // CLIENT DISCONNECTS UNEXPECTLY
-  Toast* clientDisconnectToast = new Toast("UNEXPECTED DISCONNECTION!", &mainWindow);
-  QObject::connect(controller, &Controller::clientDisconnected, invalidCommunicationToast, &Toast::showToast);
+  Toast *invalidCommunicationToast =
+      new Toast("CAN'T COMMUNICATE TO DISCONNECTED USER!", &mainWindow);
+  QObject::connect(controller, &Controller::userAlreadyDisconnected,
+                   invalidCommunicationToast, &Toast::showToast);
 
+  // CLIENT DISCONNECTS UNEXPECTLY
+  Toast *clientDisconnectToast =
+      new Toast("UNEXPECTED DISCONNECTION!", &mainWindow);
+  QObject::connect(controller, &Controller::clientDisconnected,
+                   invalidCommunicationToast, &Toast::showToast);
 
   int ret = app.exec();
   return ret;
