@@ -88,14 +88,18 @@ of the complete list of all chats.
 Reading a 1000+ lines code file can be exhausting, here's some shortcuts to some
 highlights of the code!
 
-### Creation of a connection with all it's information:
+### Creation of a connection with all it's information
 
 https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L906
 
-### Message passing to the appropriate thread:
+### Message passing to the appropriate thread
 
 https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L1096
 
-### Message handling on each thread:
+### Message handling on each thread
 
 https://github.com/ElrohirGT/CHAD/blob/5953d85f212ecc7f9bd32f5372fa910497d05b99/server/src/main.c#L333
+
+### Server deinitialization
+
+https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L1225-L1239
