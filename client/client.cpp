@@ -976,9 +976,9 @@ public:
     const UWU_User &user = node->data;
 
     if (role == Qt::DisplayRole) {
-      return QString::fromUtf8(user.username.data);
+      return QString::fromUtf8(user.username.data, user.username.length);
     } else if (role == UsernameRole) {
-      return QString::fromUtf8(user.username.data);
+      return QString::fromUtf8(user.username.data, user.username.length);
     } else if (role == IpRole) {
       return QString::fromUtf8("fixme");
     }
@@ -1333,7 +1333,8 @@ int main(int argc, char *argv[]) {
           } else {
             qDebug() << "Chat history not found for user:" << username;
             messageModel->setChatHistory(nullptr);
-            UWU_STATE->currentChat = nullptr;
+            UWU_STATE->currentChat = NULL;
+            return;
           }
 
           get_messages_handler(&UWU_STATE->currentChat->channel_name);
