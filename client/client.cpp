@@ -1682,6 +1682,11 @@ int main(int argc, char *argv[]) {
       });
 
   QObject::connect(
+      controller, &Controller::selectedUserJustDisconnected, [&]() {
+          selectedUser = "";
+      });
+
+  QObject::connect(
       chatUsers, &QListView::clicked, [&](const QModelIndex &index) {
         if (index.isValid()) {
           QString username = index.data(UWUUserModel::UsernameRole).toString();
