@@ -41,3 +41,26 @@ you can just use the `-h` flag to see the help menu!
 # If you want to modify the port or binding address just run it with the -h flag to see the options!
 # ./build/main -h
 ```
+
+## Multithreading
+
+Last time you checked on us the server didn't run with various threads. Now it
+creates a thread for each connection it receives and manages all race conditions
+so no data is ever overwritten by a client sending a message "at the same time"
+as another client. Keep reading to see how we implemented it.
+
+First, the connection lifecycle loop:
+https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L897
+
+Mongoose executes this function every time it receives a new event on any
+connection, we use an if statement to check which type of event it is, and
+either create a connection or pass the message to the appropriate thread to
+handle it.
+
+### Creation of a connection with all it's information:
+
+https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L906
+
+### Message passing to the appropriate thread:
+
+https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L1096
