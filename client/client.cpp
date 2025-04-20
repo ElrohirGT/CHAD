@@ -822,6 +822,7 @@ class MainWindow : public QMainWindow {
 public:
   MainWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
     setWindowTitle("CHAD GUI");
+    setStyleSheet("background-color: rgb(40, 43, 48)");
   }
 
 protected:
@@ -1651,11 +1652,6 @@ int main(int argc, char *argv[]) {
                      &QDialog::accept);
     modal.exec();
   });
-
-  QPalette topPalette = nameLabel->palette();
-  topPalette.setColor(QPalette::Window, QColor(40, 43, 48)); // DARK_300
-  topWidget->setAutoFillBackground(true);
-  topWidget->setPalette(topPalette);
 
   nameLayout->addWidget(nameLabel);
   nameLayout->addWidget(ipLabel);
