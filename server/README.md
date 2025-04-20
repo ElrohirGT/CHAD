@@ -60,9 +60,9 @@ handle it.
 The communication between threads is done via a pipe that gets initialized when
 a new connection is created. The thread polls the pipe for information, if no
 new information is received in a hot second then the global state is checked, if
-the server or the connection is closing down we then proceed to end the main
-thread loop and clean all resources associated with it (like the file descriptor
-or the memory arenas).
+the server or the connection is closing down we then proceed to end the thread
+loop and clean all resources associated with it (like the file descriptor or the
+memory arenas).
 
 Finally, all synchronization is done via mutexes. Each individual item on the
 global state has a mutex associated with it.
@@ -103,3 +103,7 @@ https://github.com/ElrohirGT/CHAD/blob/5953d85f212ecc7f9bd32f5372fa910497d05b99/
 ### Server deinitialization
 
 https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L1225-L1239
+
+### Closing a connection
+
+https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L1119-L1162
