@@ -2,6 +2,7 @@
 #include "deps/hashmap/hashmap.h"
 #include "mongoose.h"
 #include <QAbstractItemView>
+#include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDebug>
@@ -15,6 +16,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMainWindow>
+#include <QMenu>
 #include <QModelIndex>
 #include <QMouseEvent>
 #include <QMutex>
@@ -25,6 +27,7 @@
 #include <QPushButton>
 #include <QRunnable>
 #include <QScreen>
+#include <QScrollArea>
 #include <QString>
 #include <QStringListModel>
 #include <QStyledItemDelegate>
@@ -32,13 +35,10 @@
 #include <QThread>
 #include <QThreadPool>
 #include <QTimer>
-#include <QVBoxLayout>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
-#include <QMenu>
-#include <QAction>
-#include <QScrollArea>
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
@@ -854,7 +854,8 @@ public:
     connect(this, &QPushButton::clicked, this, &StatusButton::clickSlot);
 
     updateIcon();
-    setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+    setStyleSheet(
+        "background-color: rgb(30, 33, 36); width: 40px; height: 40px");
   }
 
 public slots:
@@ -886,24 +887,24 @@ public slots:
   }
 
 protected:
-void updateIcon() {
-  QString iconPath;
-  switch (status) {
-  case ACTIVE:
-    iconPath = QStringLiteral("icons/active.png");
-    break;
-  case BUSY:
-    iconPath = QStringLiteral("icons/busy.png");
-    break;
-  case INACTIVE:
-    iconPath = QStringLiteral("icons/idle.png");
-    break;
-  default:
-    iconPath = QStringLiteral("");
-    break;
+  void updateIcon() {
+    QString iconPath;
+    switch (status) {
+    case ACTIVE:
+      iconPath = QStringLiteral("icons/active.png");
+      break;
+    case BUSY:
+      iconPath = QStringLiteral("icons/busy.png");
+      break;
+    case INACTIVE:
+      iconPath = QStringLiteral("icons/idle.png");
+      break;
+    default:
+      iconPath = QStringLiteral("");
+      break;
+    }
+    setIcon(QIcon(iconPath));
   }
-  setIcon(QIcon(iconPath));
-}
 
   // Class attributes
 private:
@@ -997,7 +998,7 @@ public:
     int extra = 15 - logicalRows;
     if (extra < 0)
       extra = 0;
-    
+
     return logicalRows + extra;
   }
 
@@ -1006,10 +1007,10 @@ public:
     if (!index.isValid() || index.row() < 0)
       return QVariant();
 
-      if (index.row() >= clientState.ActiveUsers.length) {
-        // Empty Row
-        return QVariant();
-      }
+    if (index.row() >= clientState.ActiveUsers.length) {
+      // Empty Row
+      return QVariant();
+    }
 
     const UWU_UserListNode *node = getNodeAt(index.row());
     if (!node || node->is_sentinel) {
@@ -1044,24 +1045,27 @@ public:
   }
 
   Qt::ItemFlags flags(const QModelIndex &index) const override {
-    if (!index.isValid()) return Qt::NoItemFlags;
-  
+    if (!index.isValid())
+      return Qt::NoItemFlags;
+
     if (index.row() >= clientState.ActiveUsers.length) {
-      return Qt::ItemIsEnabled;  // fila vacía
+      return Qt::ItemIsEnabled; // fila vacía
     }
-  
+
     const UWU_UserListNode *node = getNodeAt(index.row());
-    if (!node || node->is_sentinel) return Qt::NoItemFlags;
-  
+    if (!node || node->is_sentinel)
+      return Qt::NoItemFlags;
+
     const UWU_User &user = node->data;
-    QString username = QString::fromUtf8(user.username.data, user.username.length);
-    
+    QString username =
+        QString::fromUtf8(user.username.data, user.username.length);
+
     if (username.isEmpty()) {
       return Qt::ItemIsEnabled;
     }
-  
+
     return Qt::ItemIsSelectable | Qt::ItemIsEnabled;
-}
+  }
 
 public slots:
   void refreshUserList() {
@@ -1123,7 +1127,7 @@ public:
       painter->fillRect(option.rect, QColor(40, 43, 48)); // DARK_300
       return;
     }
-    
+
     QStyleOptionViewItem modifiedOption = option;
     if (selectedChatUsername && username == *selectedChatUsername) {
       modifiedOption.state |= QStyle::State_Selected;
@@ -1163,7 +1167,7 @@ public:
     painter->setFont(option.font);
     if (username != "~") {
       painter->drawText(statusRect, Qt::AlignLeft | Qt::AlignVCenter, status);
-  
+
       if (!iconPath.isEmpty()) {
         QPixmap icon(iconPath);
         if (!icon.isNull()) {
@@ -1192,23 +1196,25 @@ class ChatLineEdit : public QTextEdit {
 public:
   ChatLineEdit(QString *msg, QWidget *parent = nullptr)
       : QTextEdit(parent), message(msg) {
-      setPlaceholderText("Write a message");
-      connect(this, &QTextEdit::textChanged, this, &ChatLineEdit::onTextChanged);
-      setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-      setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-      setFixedHeight(40);
-      setStyleSheet("padding-left: 10px; background-color: rgb(66,69,73); padding-top: 4px");
+    setPlaceholderText("Write a message");
+    connect(this, &QTextEdit::textChanged, this, &ChatLineEdit::onTextChanged);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setFixedHeight(40);
+    setStyleSheet("padding-left: 10px; background-color: rgb(66,69,73); "
+                  "padding-top: 4px");
 
-      // Establecer la fuente predeterminada para texto
-      QFont textFont;
+    // Establecer la fuente predeterminada para texto
+    QFont textFont;
+    textFont.setFamily("ggSansRegular");
+    // Asegúrate de que la ruta a la fuente sea correcta y que la fuente se haya
+    // cargado
+    if (QFontDatabase::addApplicationFont("fonts/ggSansRegular.ttf") != -1) {
       textFont.setFamily("ggSansRegular");
-      // Asegúrate de que la ruta a la fuente sea correcta y que la fuente se haya cargado
-      if (QFontDatabase::addApplicationFont("fonts/ggSansRegular.ttf") != -1) {
-          textFont.setFamily("ggSansRegular");
-      } else {
-          qWarning("Failed to load ggSansRegular font. Using system default.");
-      }
-      setFont(textFont);
+    } else {
+      qWarning("Failed to load ggSansRegular font. Using system default.");
+    }
+    setFont(textFont);
   }
 
 signals:
@@ -1216,25 +1222,24 @@ signals:
 
 private slots:
   void onTextChanged() {
-      if (message) {
-          *message = toPlainText();
-      }
+    if (message) {
+      *message = toPlainText();
+    }
   }
 
 public slots:
   void insertEmoji(const QString &emoji) {
-      QTextCursor cursor = textCursor();
-      QTextCharFormat emojiFormat;
-      QFont emojiFont("Segoe UI Emoji");
-      emojiFormat.setFont(emojiFont);
-      cursor.insertText(emoji, emojiFormat);
-      setTextCursor(cursor);
+    QTextCursor cursor = textCursor();
+    QTextCharFormat emojiFormat;
+    QFont emojiFont("Segoe UI Emoji");
+    emojiFormat.setFont(emojiFont);
+    cursor.insertText(emoji, emojiFormat);
+    setTextCursor(cursor);
   }
 
 private:
   QString *message;
 };
-
 
 class EmojiPickerDialog : public QDialog {
   Q_OBJECT
@@ -1252,14 +1257,11 @@ public:
 
     // Lista de emojis (puedes extenderla enormemente)
     QStringList emojis = {
-      "😊", "😂", "❤️", "👍", "🐱", "☕", "🎵", "🌍", "💻",
-      "😀", "😃", "😄", "😁", "😆", "😅", "😍", "😘", "😗", "😙", "😚",
-      "😇", "😎", "😞", "😟", "😮", "😯", "😲", "😥", "😓",
-      "😒", "😔", "😢", "😭", "😨", "😰", "🥴", "🤯", "🤬", "😤",
-      "🤪", "🤨", "🧐", "🤓", "🥸", "🤩", "🥳", "🥺", "😬",
-      "🥶", "🥵", "🤢", "🤮", "🤧", "🤕", "🤥", "🤫", "🤭", "🫣",
-      "🙁"
-  };
+        "😊", "😂", "❤️",  "👍", "🐱", "☕", "🎵", "🌍", "💻", "😀", "😃", "😄",
+        "😁", "😆", "😅", "😍", "😘", "😗", "😙", "😚", "😇", "😎", "😞", "😟",
+        "😮", "😯", "😲", "😥", "😓", "😒", "😔", "😢", "😭", "😨", "😰", "🥴",
+        "🤯", "🤬", "😤", "🤪", "🤨", "🧐", "🤓", "🥸", "🤩", "🥳", "🥺", "😬",
+        "🥶", "🥵", "🤢", "🤮", "🤧", "🤕", "🤥", "🤫", "🤭", "🫣", "🙁"};
     QFont emojiFont = font();
     emojiFont.setPointSize(20); // Aumentar el tamaño de la fuente
     emojiFont.setFamily("Segoe UI Emoji");
@@ -1267,12 +1269,12 @@ public:
     int row = 0;
     int col = 0;
     for (const QString &emoji : emojis) {
-QPushButton *emojiButton = new QPushButton(emoji);
+      QPushButton *emojiButton = new QPushButton(emoji);
       emojiButton->setFixedSize(30, 30);
       emojiButton->setFont(emojiFont); // Establecer la fuente más grande
       gridLayout->addWidget(emojiButton, row, col);
-      connect(emojiButton, &QPushButton::clicked, this, &EmojiPickerDialog::emojiClicked);
-
+      connect(emojiButton, &QPushButton::clicked, this,
+              &EmojiPickerDialog::emojiClicked);
 
       col++;
       if (col > 15) { // Número de columnas en el grid
@@ -1294,7 +1296,7 @@ signals:
 
 private slots:
   void emojiClicked() {
-    QPushButton *clickedButton = qobject_cast<QPushButton*>(sender());
+    QPushButton *clickedButton = qobject_cast<QPushButton *>(sender());
     if (clickedButton) {
       emit emojiSelected(clickedButton->text());
       accept(); // Cierra el diálogo con QDialog::Accepted
@@ -1308,17 +1310,21 @@ public:
   EmojiButton(ChatLineEdit *lineEdit, QWidget *parent = nullptr)
       : QToolButton(parent), chatLineEdit(lineEdit) {
     setIcon(QIcon("icons/emoji.png"));
-    setStyleSheet("background-color: transparent; border: none; width: 40px; height: 40px;");
+    setStyleSheet("background-color: transparent; border: none; width: 40px; "
+                  "height: 40px;");
     setIconSize(QSize(25, 25));
-    connect(this, &QToolButton::clicked, this, &EmojiButton::showEmojiPickerDialog);
+    connect(this, &QToolButton::clicked, this,
+            &EmojiButton::showEmojiPickerDialog);
 
-    setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+    setStyleSheet(
+        "background-color: rgb(30, 33, 36); width: 40px; height: 40px");
   }
 
 private slots:
   void showEmojiPickerDialog() {
     EmojiPickerDialog *dialog = new EmojiPickerDialog(this);
-    connect(dialog, &EmojiPickerDialog::emojiSelected, this, &EmojiButton::insertEmojiToLineEdit);
+    connect(dialog, &EmojiPickerDialog::emojiSelected, this,
+            &EmojiButton::insertEmojiToLineEdit);
     dialog->open(); // Muestra el diálogo modal
   }
 
@@ -1343,8 +1349,9 @@ public:
     setIcon(QIcon("icons/send.png"));
     connect(this, &QPushButton::clicked, this, &ChatSendButton::onSendClicked);
 
-    setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
-    setIconSize(QSize(25,25));
+    setStyleSheet(
+        "background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+    setIconSize(QSize(25, 25));
   }
 
 private slots:
@@ -1437,64 +1444,64 @@ private:
 };
 
 class UWUMessageDelegate : public QStyledItemDelegate {
-  public:
-    UWUMessageDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
-  
-    void paint(QPainter *painter, const QStyleOptionViewItem &option,
-               const QModelIndex &index) const override {
-      painter->save();
-  
-      QString fullText = index.data(Qt::DisplayRole).toString();
-  
-      QString sender;
-      QString message;
-  
-      int separatorIndex = fullText.indexOf(": ");
-      if (separatorIndex != -1) {
-        sender = fullText.left(separatorIndex);
-        message = fullText.mid(separatorIndex + 2);
-      } else {
-        sender = "";
-        message = fullText;
-      }
+public:
+  UWUMessageDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
 
-      if (sender == "") {
-        painter->fillRect(option.rect, QColor(30, 33, 36)); // DARK_300
-        painter->restore();
-        return;
-      }
-  
-      QRect rect = option.rect;
-      QColor backgroundColor = (option.state & QStyle::State_Selected)
-                                   ? QColor(30, 33, 36)
-                                   : QColor(30, 33, 36);
-      painter->fillRect(rect, backgroundColor);
-  
-      QFont senderFont = painter->font();
-      senderFont.setFamily("Segoe UI Emoji");
-      senderFont.setBold(true);
-      senderFont.setPointSize(15);
-      painter->setFont(senderFont);
-      painter->setPen(QColor(114, 137, 218)); // Azul Discord
-      painter->drawText(rect.adjusted(10, 5, -10, -5), sender);
-  
-      QFont messageFont = painter->font();
-      messageFont.setBold(false);
-      messageFont.setPointSize(14);
-      painter->setFont(messageFont);
-      painter->setPen(QColor(220, 220, 220)); // Blanco
-      painter->drawText(rect.adjusted(10, 25, -10, -5), message);
-  
+  void paint(QPainter *painter, const QStyleOptionViewItem &option,
+             const QModelIndex &index) const override {
+    painter->save();
+
+    QString fullText = index.data(Qt::DisplayRole).toString();
+
+    QString sender;
+    QString message;
+
+    int separatorIndex = fullText.indexOf(": ");
+    if (separatorIndex != -1) {
+      sender = fullText.left(separatorIndex);
+      message = fullText.mid(separatorIndex + 2);
+    } else {
+      sender = "";
+      message = fullText;
+    }
+
+    if (sender == "") {
+      painter->fillRect(option.rect, QColor(30, 33, 36)); // DARK_300
       painter->restore();
+      return;
     }
-  
-    QSize sizeHint(const QStyleOptionViewItem &option,
-                   const QModelIndex &index) const override {
-      Q_UNUSED(option);
-      Q_UNUSED(index);
-      return QSize(100, 60); // Altura fija por mensaje
-    }
-  };
+
+    QRect rect = option.rect;
+    QColor backgroundColor = (option.state & QStyle::State_Selected)
+                                 ? QColor(30, 33, 36)
+                                 : QColor(30, 33, 36);
+    painter->fillRect(rect, backgroundColor);
+
+    QFont senderFont = painter->font();
+    senderFont.setFamily("Segoe UI Emoji");
+    senderFont.setBold(true);
+    senderFont.setPointSize(15);
+    painter->setFont(senderFont);
+    painter->setPen(QColor(114, 137, 218)); // Azul Discord
+    painter->drawText(rect.adjusted(10, 5, -10, -5), sender);
+
+    QFont messageFont = painter->font();
+    messageFont.setBold(false);
+    messageFont.setPointSize(14);
+    painter->setFont(messageFont);
+    painter->setPen(QColor(220, 220, 220)); // Blanco
+    painter->drawText(rect.adjusted(10, 25, -10, -5), message);
+
+    painter->restore();
+  }
+
+  QSize sizeHint(const QStyleOptionViewItem &option,
+                 const QModelIndex &index) const override {
+    Q_UNUSED(option);
+    Q_UNUSED(index);
+    return QSize(100, 60); // Altura fija por mensaje
+  }
+};
 
 class Toast : public QLabel {
 public:
@@ -1653,7 +1660,8 @@ int main(int argc, char *argv[]) {
   QListView *chatMessages = new QListView();
   chatMessages->setModel(messageModel);
   chatMessages->setItemDelegate(messageDelegate);
-  chatMessages->setUniformItemSizes(true);  // Opcional si todas las filas tienen el mismo alto
+  chatMessages->setUniformItemSizes(
+      true); // Opcional si todas las filas tienen el mismo alto
   chatMessages->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
   chatMessages->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   chatMessages->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
@@ -1770,8 +1778,9 @@ int main(int argc, char *argv[]) {
   helpButton->setIcon(QIcon("icons/help.png"));
   helpButton->setMaximumWidth(50);
   helpButton->setContentsMargins(0, 0, 0, 100);
-  helpButton->setStyleSheet("background-color: rgb(30, 33, 36); width: 40px; height: 40px");
-  helpButton->setIconSize(QSize(25,25));
+  helpButton->setStyleSheet(
+      "background-color: rgb(30, 33, 36); width: 40px; height: 40px");
+  helpButton->setIconSize(QSize(25, 25));
 
   //------------------------
   // Modal for help
@@ -1782,21 +1791,34 @@ int main(int argc, char *argv[]) {
     modal.setModal(true);
 
     // Títulos
-    QLabel label("Welcome to the chat! Here you can interact with other users connected to the platform.");
+    QLabel label("Welcome to the chat! Here you can interact with other users "
+                 "connected to the platform.");
 
     // Instrucciones
-    QLabel instrucctions("1. Chat with another user: Select a chat from the list on the left to start sending messages to that person.");
-    QLabel instrucctions2("2. Use the general chat: This chat receives messages from all users connected to the platform, visible to everyone.");
-    QLabel instrucctions3("3. View connected users: On the left side, you can see a list of all active users. You can view their names and current statuses.");
-    QLabel instrucctions4("4. Change your status: You can switch between ACTIVE, BUSY, and INACTIVE statuses.\n"
-                          "Your default status is ACTIVE. If there is no activity for a while, your status will automatically change to INACTIVE.\n"
-                          "To return to ACTIVE, simply send a message.\n"
-                          "If you are ACTIVE or INACTIVE and press the status button, it will switch to BUSY. Press it again to return to ACTIVE.\n"
-                          "To become DISCONNECTED, simply close your chat session.");
+    QLabel instrucctions(
+        "1. Chat with another user: Select a chat from the list on the left to "
+        "start sending messages to that person.");
+    QLabel instrucctions2(
+        "2. Use the general chat: This chat receives messages from all users "
+        "connected to the platform, visible to everyone.");
+    QLabel instrucctions3(
+        "3. View connected users: On the left side, you can see a list of all "
+        "active users. You can view their names and current statuses.");
+    QLabel instrucctions4(
+        "4. Change your status: You can switch between ACTIVE, BUSY, and "
+        "INACTIVE statuses.\n"
+        "Your default status is ACTIVE. If there is no activity for a while, "
+        "your status will automatically change to INACTIVE.\n"
+        "To return to ACTIVE, simply send a message.\n"
+        "If you are ACTIVE or INACTIVE and press the status button, it will "
+        "switch to BUSY. Press it again to return to ACTIVE.\n"
+        "To become DISCONNECTED, simply close your chat session.");
 
     // Crear botones con iconos
     QPushButton closeButton("Close");
-    closeButton.setIcon(QIcon(":/icons/close-icon.png"));  // Asume que tienes un icono para el botón de cierre
+    closeButton.setIcon(
+        QIcon(":/icons/close-icon.png")); // Asume que tienes un icono para el
+                                          // botón de cierre
 
     // Iconos de estado
     QLabel statusLabel("Here are the status icons:");
@@ -1805,9 +1827,12 @@ int main(int argc, char *argv[]) {
     QLabel inactiveStatus("INACTIVE");
 
     QLabel activeIcon, busyIcon, inactiveIcon;
-    activeIcon.setPixmap(QPixmap("icons/active.png").scaled(30, 30, Qt::KeepAspectRatio));
-    busyIcon.setPixmap(QPixmap("icons/busy.png").scaled(30, 30, Qt::KeepAspectRatio));
-    inactiveIcon.setPixmap(QPixmap("icons/idle.png").scaled(30, 30, Qt::KeepAspectRatio));
+    activeIcon.setPixmap(
+        QPixmap("icons/active.png").scaled(30, 30, Qt::KeepAspectRatio));
+    busyIcon.setPixmap(
+        QPixmap("icons/busy.png").scaled(30, 30, Qt::KeepAspectRatio));
+    inactiveIcon.setPixmap(
+        QPixmap("icons/idle.png").scaled(30, 30, Qt::KeepAspectRatio));
 
     // Crear el layout
     QVBoxLayout modalLayout(&modal);
@@ -1829,7 +1854,8 @@ int main(int argc, char *argv[]) {
     // Botón de cierre
     modalLayout.addWidget(&closeButton);
 
-    QObject::connect(&closeButton, &QPushButton::clicked, &modal, &QDialog::accept);
+    QObject::connect(&closeButton, &QPushButton::clicked, &modal,
+                     &QDialog::accept);
 
     modal.exec();
   });
