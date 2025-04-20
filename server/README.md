@@ -83,10 +83,12 @@ This way our server can handle multiple chats being modified concurrently, since
 each thread only needs to lock the chat it want's to append a chat to, instead
 of the complete list of all chats.
 
-### Creation of a connection with all it's information:
+## Shortcuts
 
-Here's a shortcut to the piece of code that handles the creation of a new client
-connection on our server.
+Reading a 1000+ lines code file can be exhausting, here's some shortcuts to some
+highlights of the code!
+
+### Creation of a connection with all it's information:
 
 https://github.com/ElrohirGT/CHAD/blob/ee96684fbf7053ebf8babd5d78dd1bfe2349e67e/server/src/main.c#L906
 
