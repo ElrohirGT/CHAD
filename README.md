@@ -31,3 +31,7 @@ nix develop
 
 This will enter you inside a development shell with all the tools that we had
 during development.
+
+## Video 🎥
+
+In the follow link you can watch the video where we compile the server and client, we also offer a demo of our client using our server and a server created by another group: [Watch Here](https://youtu.be/tKLMU1hbfx4)
